@@ -105,7 +105,19 @@ export async function checkSupabaseConnection(): Promise<BackendHealthReport> {
     } else {
       report.databaseAccessible = true;
       report.schemaMigrated = true;
-      report.details.databaseMessage = `Database query succeeded (${data?.length || 0} services verified).`;
+      let extra = "";
+      try {
+        const { error: viewError } = await supabase
+          .from("marketplace_workers")
+          .select("id")
+          .limit(1);
+        if (!viewError) {
+          extra = " Public discovery view (marketplace_workers) verified.";
+        }
+      } catch {
+        // Non-blocking view verification
+      }
+      report.details.databaseMessage = `Database query succeeded (${data?.length || 0} services verified).${extra}`;
     }
   } catch (err: any) {
     report.databaseAccessible = false;
