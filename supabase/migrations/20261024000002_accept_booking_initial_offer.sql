@@ -10,7 +10,7 @@ CREATE OR REPLACE FUNCTION public.update_booking_status(
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path = pg_catalog, public, pg_temp
 AS $$
 DECLARE
   v_caller_id UUID;
@@ -35,8 +35,8 @@ BEGIN
   v_curr_status := v_booking.booking_status;
 
   IF p_next_status = 'cancelled' THEN
-    IF v_curr_status = 'completed' THEN
-      RAISE EXCEPTION 'Cannot cancel a completed booking';
+    IF v_curr_status IN ('completed', 'cancelled') THEN
+      RAISE EXCEPTION 'Cannot cancel a % booking', v_curr_status;
     END IF;
     IF v_caller_id != v_booking.customer_id AND v_caller_id != v_booking.worker_id THEN
       RAISE EXCEPTION 'Unauthorized to cancel this booking';
@@ -53,6 +53,7 @@ BEGIN
     SELECT * INTO v_initial_offer
     FROM public.negotiation_offers
     WHERE booking_id = p_booking_id
+      AND proposer_id = v_booking.customer_id
       AND proposer_role = 'customer'
       AND offer_status = 'pending'
     ORDER BY round_number DESC, created_at DESC
@@ -96,17 +97,11 @@ BEGIN
     END IF;
 
   ELSIF p_next_status = 'completed' THEN
-    IF v_caller_id != v_booking.worker_id AND v_caller_id != v_booking.customer_id THEN
-      RAISE EXCEPTION 'Unauthorized to mark booking completed';
+    IF v_caller_id != v_booking.worker_id THEN
+      RAISE EXCEPTION 'Only the assigned worker can complete a booking';
     END IF;
     IF v_curr_status != 'in_progress' THEN
       RAISE EXCEPTION 'Invalid transition from % to completed (work must be in_progress)', v_curr_status;
-    END IF;
-
-    IF v_booking.worker_id IS NOT NULL THEN
-      UPDATE public.worker_profiles
-      SET total_jobs = COALESCE(total_jobs, 0) + 1
-      WHERE id = v_booking.worker_id;
     END IF;
 
   ELSE
