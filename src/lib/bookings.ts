@@ -84,7 +84,8 @@ export interface CreateBookingParams {
 
 /**
  * Creates a new booking atomically with its initial FairFare negotiation offer.
- * Uses PostgreSQL RPC create_booking_atomic when available, with a safe client-side fallback.
+ * Uses the PostgreSQL RPC so that the booking, its initial offer, and its audit event
+ * either all succeed or all roll back together.
  */
 export async function createBooking(
   params: CreateBookingParams
@@ -102,7 +103,8 @@ export async function createBooking(
     return { data: null, error: 'Please enter a valid price greater than zero' };
   }
 
-  // 1. Try atomic RPC
+  // Atomic RPC only. Do not fall back to independent client writes: they can leave a
+  // partially-created booking if the offer or audit-event insert fails.
   try {
     const { data: rpcRes, error: rpcErr } = await supabase.rpc('create_booking_atomic', {
       p_worker_id: params.workerId,
@@ -121,66 +123,9 @@ export async function createBooking(
       // Fetch the full inserted booking row
       return await fetchBookingById(rpcRes.booking_id);
     }
+    return { data: null, error: rpcErr?.message || 'Booking service did not return a booking ID' };
   } catch (rpcEx) {
-    // RPC may not be installed yet; proceed to direct transactional fallback
-    console.warn('RPC create_booking_atomic not available, using client fallback', rpcEx);
-  }
-
-  // 2. Direct Supabase fallback
-  try {
-    const bookingNumber = 'BK-' + new Date().toISOString().slice(0, 10).replace(/-/g, '') + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
-
-    const { data: booking, error: bErr } = await supabase
-      .from('bookings')
-      .insert({
-        booking_number: bookingNumber,
-        customer_id: user.id,
-        worker_id: params.workerId,
-        service_id: params.serviceId,
-        job_title: params.jobTitle,
-        job_description: params.jobDescription,
-        service_address: params.serviceAddress,
-        service_location: params.serviceLocation || 'Laxmi Nagar, Delhi',
-        booking_type: params.bookingType || 'asap',
-        scheduled_at: params.scheduledAt || null,
-        locked_price: params.initialPrice,
-        spare_parts_approved: false,
-        spare_parts_amount: 0,
-        tip_amount: 0,
-        total_amount: params.initialPrice,
-        booking_status: 'pending',
-        payment_status: 'pending',
-      })
-      .select()
-      .single();
-
-    if (bErr || !booking) {
-      return { data: null, error: bErr?.message || 'Failed to create booking' };
-    }
-
-    // Insert initial offer
-    await supabase.from('negotiation_offers').insert({
-      booking_id: booking.id,
-      proposer_id: user.id,
-      proposer_role: 'customer',
-      offered_price: params.initialPrice,
-      message: params.customerNote || 'Initial FairFare booking offer',
-      offer_status: 'pending',
-      round_number: 1,
-    });
-
-    // Insert timeline event
-    await supabase.from('booking_events').insert({
-      booking_id: booking.id,
-      actor_id: user.id,
-      event_type: 'booking_created',
-      notes: `Booking created with initial FairFare offer ₹${params.initialPrice}`,
-      metadata: { initial_price: params.initialPrice, booking_type: params.bookingType },
-    });
-
-    return { data: booking as DbBooking, error: null };
-  } catch (err: any) {
-    return { data: null, error: err.message || 'Unexpected error creating booking' };
+    return { data: null, error: rpcEx instanceof Error ? rpcEx.message : 'Booking service is unavailable' };
   }
 }
 
@@ -390,7 +335,7 @@ export async function submitCounterOffer(
     return { success: false, error: 'Authentication required' };
   }
 
-  // 1. Try atomic RPC
+  // Atomic RPC only; a multi-step fallback could race with another offer.
   try {
     const { error: rpcErr } = await supabase.rpc('submit_negotiation_offer', {
       p_booking_id: bookingId,
@@ -401,68 +346,9 @@ export async function submitCounterOffer(
     if (!rpcErr) {
       return { success: true, error: null };
     }
+    return { success: false, error: rpcErr.message };
   } catch (ex) {
-    console.warn('RPC submit_negotiation_offer not available, using client fallback', ex);
-  }
-
-  // 2. Direct client fallback
-  try {
-    // Determine caller role from booking
-    const { data: b, error: bErr } = await supabase
-      .from('bookings')
-      .select('customer_id, worker_id, booking_status')
-      .eq('id', bookingId)
-      .single();
-
-    if (bErr || !b) {
-      return { success: false, error: 'Booking not found' };
-    }
-
-    if (b.booking_status === 'completed' || b.booking_status === 'cancelled') {
-      return { success: false, error: `Cannot negotiate on a ${b.booking_status} booking` };
-    }
-
-    const callerRole = user.id === b.customer_id ? 'customer' : 'worker';
-
-    // Mark previous pending offers countered
-    await supabase
-      .from('negotiation_offers')
-      .update({ offer_status: 'countered' })
-      .eq('booking_id', bookingId)
-      .eq('offer_status', 'pending');
-
-    // Insert new offer
-    const { error: insErr } = await supabase.from('negotiation_offers').insert({
-      booking_id: bookingId,
-      proposer_id: user.id,
-      proposer_role: callerRole,
-      offered_price: price,
-      message: message || `${callerRole === 'worker' ? 'Worker' : 'Customer'} offered ₹${price}`,
-      offer_status: 'pending',
-    });
-
-    if (insErr) {
-      return { success: false, error: insErr.message };
-    }
-
-    // Update booking status to negotiating
-    await supabase
-      .from('bookings')
-      .update({ booking_status: 'negotiating', updated_at: new Date().toISOString() })
-      .eq('id', bookingId);
-
-    // Add event
-    await supabase.from('booking_events').insert({
-      booking_id: bookingId,
-      actor_id: user.id,
-      event_type: 'offer_proposed',
-      notes: `${callerRole === 'worker' ? 'Worker' : 'Customer'} offered ₹${price}`,
-      metadata: { price },
-    });
-
-    return { success: true, error: null };
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Failed to submit counteroffer' };
+    return { success: false, error: ex instanceof Error ? ex.message : 'FairFare service is unavailable' };
   }
 }
 
@@ -484,7 +370,7 @@ export async function acceptOffer(
     return { success: false, error: 'Authentication required' };
   }
 
-  // 1. Try atomic RPC
+  // Atomic RPC only; acceptance changes both the offer and booking price.
   try {
     const { error: rpcErr } = await supabase.rpc('accept_negotiation_offer', {
       p_booking_id: bookingId,
@@ -494,68 +380,9 @@ export async function acceptOffer(
     if (!rpcErr) {
       return { success: true, error: null };
     }
+    return { success: false, error: rpcErr.message };
   } catch (ex) {
-    console.warn('RPC accept_negotiation_offer not available, using client fallback', ex);
-  }
-
-  // 2. Direct client fallback
-  try {
-    // Anti-self-acceptance check
-    const { data: offer, error: offErr } = await supabase
-      .from('negotiation_offers')
-      .select('*')
-      .eq('id', offerId)
-      .single();
-
-    if (offErr || !offer) {
-      return { success: false, error: 'Offer not found' };
-    }
-
-    if (offer.proposer_id === user.id) {
-      return { success: false, error: 'You cannot accept your own offer. Waiting for the other party.' };
-    }
-
-    // Mark accepted
-    await supabase
-      .from('negotiation_offers')
-      .update({ offer_status: 'accepted' })
-      .eq('id', offerId);
-
-    // Mark competing offers countered
-    await supabase
-      .from('negotiation_offers')
-      .update({ offer_status: 'countered' })
-      .eq('booking_id', bookingId)
-      .neq('id', offerId)
-      .eq('offer_status', 'pending');
-
-    // Update booking locked price and status
-    const { error: bErr } = await supabase
-      .from('bookings')
-      .update({
-        locked_price: agreedPrice,
-        total_amount: agreedPrice,
-        booking_status: 'accepted',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', bookingId);
-
-    if (bErr) {
-      return { success: false, error: bErr.message };
-    }
-
-    // Log event
-    await supabase.from('booking_events').insert({
-      booking_id: bookingId,
-      actor_id: user.id,
-      event_type: 'offer_accepted',
-      notes: `FairFare price locked at ₹${agreedPrice}`,
-      metadata: { offer_id: offerId, price: agreedPrice },
-    });
-
-    return { success: true, error: null };
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Failed to accept offer' };
+    return { success: false, error: ex instanceof Error ? ex.message : 'FairFare service is unavailable' };
   }
 }
 
@@ -576,7 +403,7 @@ export async function updateBookingStatus(
     return { success: false, error: 'Authentication required' };
   }
 
-  // 1. Try atomic RPC
+  // Atomic RPC only; lifecycle updates must keep the audit timeline synchronized.
   try {
     const { error: rpcErr } = await supabase.rpc('update_booking_status', {
       p_booking_id: bookingId,
@@ -587,69 +414,8 @@ export async function updateBookingStatus(
     if (!rpcErr) {
       return { success: true, error: null };
     }
+    return { success: false, error: rpcErr.message };
   } catch (ex) {
-    console.warn('RPC update_booking_status not available, using client fallback', ex);
-  }
-
-  // 2. Direct client fallback
-  try {
-    const { data: b, error: bErr } = await supabase
-      .from('bookings')
-      .select('customer_id, worker_id, booking_status')
-      .eq('id', bookingId)
-      .single();
-
-    if (bErr || !b) {
-      return { success: false, error: 'Booking not found' };
-    }
-
-    // Authorization checks
-    if (nextStatus === 'on_the_way' || nextStatus === 'in_progress') {
-      if (user.id !== b.worker_id) {
-        return { success: false, error: 'Only the assigned worker can update job operational progress' };
-      }
-    }
-
-    const { error: updErr } = await supabase
-      .from('bookings')
-      .update({
-        booking_status: nextStatus,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', bookingId);
-
-    if (updErr) {
-      return { success: false, error: updErr.message };
-    }
-
-    // If completed, increment worker jobs count if worker_id exists
-    if (nextStatus === 'completed' && b.worker_id) {
-      try {
-        const { data: wp } = await supabase
-          .from('worker_profiles')
-          .select('total_jobs')
-          .eq('id', b.worker_id)
-          .single();
-        if (wp) {
-          await supabase
-            .from('worker_profiles')
-            .update({ total_jobs: (wp.total_jobs || 0) + 1 })
-            .eq('id', b.worker_id);
-        }
-      } catch { }
-    }
-
-    // Log timeline event
-    await supabase.from('booking_events').insert({
-      booking_id: bookingId,
-      actor_id: user.id,
-      event_type: `status_changed_${nextStatus}`,
-      notes: notes || `Booking transitioned to ${nextStatus}`,
-      metadata: { from_status: b.booking_status, to_status: nextStatus },
-    });
-
-    return { success: true, error: null };
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Failed to update booking status' };
+    return { success: false, error: ex instanceof Error ? ex.message : 'Booking service is unavailable' };
   }
 }

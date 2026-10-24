@@ -28,7 +28,21 @@ export function BookingFlow({
   scheduleDate?: string; setScheduleDate?: (d: string) => void;
   address?: string; setAddress?: (a: string) => void;
 }) {
-  const w = workers.find((x) => x.id === workerId) ?? workers[0];
+  // Marketplace cards carry UUIDs from Supabase. Retain the local sample only
+  // for the offline demo, never as a substitute for a real selected worker.
+  const fallbackWorker = workers.find((x) => x.id === workerId) ?? workers[0];
+  const [selectedWorker, setSelectedWorker] = useState(fallbackWorker);
+  useEffect(() => {
+    const localWorker = workers.find((x) => x.id === workerId);
+    if (localWorker) {
+      setSelectedWorker(localWorker);
+      return;
+    }
+    fetchWorkerById(workerId).then(({ data }) => {
+      if (data) setSelectedWorker(normalizeWorker(data));
+    });
+  }, [workerId]);
+  const w = selectedWorker;
   const cfg = serviceJobConfigs[w.serviceId] || serviceJobConfigs["plumbing"];
 
   const [step, setStep] = useState(1);
