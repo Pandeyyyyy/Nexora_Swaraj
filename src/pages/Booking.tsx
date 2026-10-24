@@ -1,13 +1,21 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
   ArrowRight, BadgeCheck, Camera, CheckCircle2, ChevronLeft, Clock, ImagePlus,
   Lock, MapPin, MessageCircle, Mic, Navigation, Phone, ShieldCheck, Star,
   AlertTriangle, Wallet, RotateCcw, Send, Sparkles, Timer, FileText, ChevronRight, X,
+  Loader2, AlertCircle, RefreshCw, CheckCheck, Undo2
 } from "lucide-react";
 import { workers, serviceJobConfigs } from "../data";
 import type { OfferMsg } from "../data";
-import { CustomerBottomNav, Stars, TrustRing } from "../components/shared";
+import { CustomerBottomNav, Stars, TrustRing, EmptyState } from "../components/shared";
 import type { Page } from "../components/shared";
+import { useAuth } from "../contexts/AuthContext";
+import {
+  createBooking, fetchBookingById, fetchBookingOffers, fetchBookingEvents,
+  submitCounterOffer, acceptOffer, updateBookingStatus, fetchCustomerBookings,
+  type DbBooking, type DbNegotiationOffer, type DbBookingEvent
+} from "../lib/bookings";
+import { fetchWorkerById, normalizeWorker } from "../lib/marketplace";
 
 /* ================= BOOKING + FAIRFARE ================= */
 export function BookingFlow({
@@ -375,6 +383,7 @@ export function BookingFlow({
               serviceName={w.service}
               jobTitle={cfg.title}
               jobDesc={desc}
+              serviceId={w.serviceId}
             />
           )}
         </div>
@@ -406,14 +415,68 @@ export function BookingFlow({
 }
 
 function ConfirmBooking({
-  go, wId, price, schedule, date, address, lang, serviceName, jobTitle, jobDesc,
+  go, wId, price, schedule, date, address, lang, serviceName, jobTitle, jobDesc, serviceId,
 }: {
   go: (p: Page, widOrOpts?: any) => void; wId: string; price: number; schedule: string; date: string; address: string; lang: string;
-  serviceName: string; jobTitle: string; jobDesc: string;
+  serviceName: string; jobTitle: string; jobDesc: string; serviceId?: string;
 }) {
-  const w = workers.find((x) => x.id === wId)!;
+  const { user, profile, isAuthenticated } = useAuth();
+  const w = workers.find((x) => x.id === wId) || {
+    id: wId,
+    name: "Verified Worker",
+    eta: "~15 min",
+    service: serviceName,
+  };
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
   const platformFee = 0;
   const total = price + platformFee;
+
+  const handleConfirm = async () => {
+    if (submitting) return;
+
+    if (!isAuthenticated || !user) {
+      setErrorMsg(lang === "hi" ? "बुकिंग की पुष्टि करने के लिए कृपया पहले लॉगिन करें।" : "Please sign in to your Saharaa account to confirm and persist this booking.");
+      return;
+    }
+
+    if (profile?.role === "worker") {
+      setErrorMsg(lang === "hi" ? "कारीगर खाता बुकिंग नहीं कर सकता। कृपया ग्राहक खाते से लॉगिन करें।" : "Workers cannot book services. Please sign in with a customer account.");
+      return;
+    }
+
+    setSubmitting(true);
+    setErrorMsg(null);
+
+    const res = await createBooking({
+      workerId: wId,
+      serviceId: serviceId || "plumbing",
+      jobTitle: jobTitle || `${serviceName} Service`,
+      jobDescription: jobDesc,
+      serviceAddress: address,
+      serviceLocation: "Laxmi Nagar, Delhi",
+      bookingType: schedule === "asap" ? "asap" : "schedule",
+      scheduledAt: schedule === "asap" ? null : date,
+      initialPrice: price,
+      customerNote: `Customer initial FairFare offer for ${serviceName}`
+    });
+
+    setSubmitting(false);
+
+    if (res.error || !res.data) {
+      setErrorMsg(res.error || "Failed to confirm booking in Supabase. Please retry.");
+    } else {
+      go("tracking", {
+        bookingId: res.data.id,
+        workerId: wId,
+        price: res.data.locked_price,
+        schedule,
+        date,
+        address,
+      });
+    }
+  };
 
   return (
     <div className="animate-slide-up rounded-[22px] bg-white p-5 ring-1 ring-[#1B4332]/10 card-shadow sm:p-6">
@@ -422,8 +485,8 @@ function ConfirmBooking({
       <div className="mt-4 flex items-center gap-3 rounded-2xl bg-[#EFFAF1] p-4 ring-1 ring-[#2D6A4F]/25">
         <Lock className="h-6 w-6 text-[#2D6A4F]" />
         <div>
-          <p className="text-[13px] font-bold text-[#1B4332]">FAIRFARE LOCKED</p>
-          <p className="text-[22px] font-extrabold text-[#1B4332]">₹{price} <span className="text-[12px] font-bold text-[#4A4A4A]">final agreed price • no surprise charges</span></p>
+          <p className="text-[13px] font-bold text-[#1B4332]">FAIRFARE PROPOSED PRICE</p>
+          <p className="text-[22px] font-extrabold text-[#1B4332]">₹{price} <span className="text-[12px] font-bold text-[#4A4A4A]">initial offer • saved to database</span></p>
         </div>
       </div>
 
@@ -438,42 +501,75 @@ function ConfirmBooking({
       </div>
 
       <div className="mt-4 rounded-2xl bg-[#FAF9F6] p-4 text-[13px] font-semibold ring-1 ring-[#1B4332]/8">
-        <p className="flex justify-between py-0.5">Agreed service price <span className="font-extrabold text-[#1A1A1A]">₹{price}</span></p>
+        <p className="flex justify-between py-0.5">Proposed service price <span className="font-extrabold text-[#1A1A1A]">₹{price}</span></p>
         <p className="flex justify-between py-0.5">Platform booking fee <span className="font-extrabold text-[#2D6A4F]">FREE (₹0)</span></p>
         <p className="flex justify-between border-t border-dashed border-[#1B4332]/15 pt-2 text-[15px] font-extrabold">You'll pay <span className="text-[#1B4332]">₹{total}</span></p>
       </div>
 
+      {errorMsg && (
+        <div className="animate-fade-in mt-3 flex items-start gap-2.5 rounded-2xl bg-[#FFEBEE] p-3.5 text-[12.5px] font-bold text-[#C62828] ring-1 ring-[#EF5350]/30">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div className="flex-1">
+            <span>{errorMsg}</span>
+            {!isAuthenticated && (
+              <button
+                onClick={() => go("auth")}
+                className="mt-2 block rounded-full bg-[#1B4332] px-3.5 py-1.5 text-xs text-white"
+              >
+                Sign In / Sign Up →
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <button
-        onClick={() => go("tracking", { workerId: wId, price, schedule, date, address })}
-        className="mt-4 w-full rounded-2xl bg-[#1B4332] py-4 text-[15px] font-extrabold text-white transition hover:bg-[#2D6A4F] active:scale-[0.98]"
+        onClick={handleConfirm}
+        disabled={submitting}
+        className={`mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#1B4332] py-4 text-[15px] font-extrabold text-white transition hover:bg-[#2D6A4F] active:scale-[0.98] ${submitting ? "opacity-75 cursor-not-allowed" : ""}`}
       >
-        {lang === "hi" ? "बुकिंग पक्की करें ✓" : "Confirm booking ✓"}
+        {submitting ? (
+          <>
+            <Loader2 className="h-5 w-5 animate-spin" />
+            <span>Persisting booking to database…</span>
+          </>
+        ) : (
+          lang === "hi" ? "बुकिंग पक्की करें ✓" : "Confirm booking ✓"
+        )}
       </button>
-      <p className="mt-2.5 text-center text-[11.5px] font-bold text-[#8a8a8a]">Free cancellation within 10 mins • SOS & support always on</p>
+      <p className="mt-2.5 text-center text-[11.5px] font-bold text-[#8a8a8a]">Free cancellation • SOS & support always on • Database protected</p>
     </div>
   );
 }
 
-/* ================= TRACKING ================= */
+/* ================= TRACKING (DATABASE-BACKED) ================= */
 const stages = ["Requested", "Accepted", "On the Way", "In Progress", "Completed"];
 
 export function Tracking({
   go, lang, workerId, price = 450, schedule = "asap", date = "Tomorrow, 10:00 AM", address = "B-42, Laxmi Nagar, Delhi 110092",
+  bookingId, partsApproved = false, setPartsApproved,
 }: {
   go: (p: Page, widOrOpts?: any) => void; lang: "en" | "hi"; workerId: string; price: number;
   schedule?: "asap" | "later"; date?: string; address?: string;
+  bookingId?: string; partsApproved?: boolean; setPartsApproved?: (b: boolean) => void;
 }) {
-  const w = workers.find((x) => x.id === workerId) ?? workers[0];
-  const cfg = serviceJobConfigs[w.serviceId] || serviceJobConfigs["plumbing"];
+  const { user } = useAuth();
+  const staticWorker = workers.find((x) => x.id === workerId) ?? workers[0];
+  const cfg = serviceJobConfigs[staticWorker.serviceId] || serviceJobConfigs["plumbing"];
 
-  const [stage, setStage] = useState(2);
-  const [chatOpen, setChatOpen] = useState(false);
-  const [chat, setChat] = useState([
-    { from: "worker", text: `Namaste! Reaching for your ${w.service.toLowerCase()} service in 8 mins. 🙏` }
-  ]);
-  const [msg, setMsg] = useState("");
+  const [dbBooking, setDbBooking] = useState<DbBooking | null>(null);
+  const [dbOffers, setDbOffers] = useState<DbNegotiationOffer[]>([]);
+  const [dbEvents, setDbEvents] = useState<DbBookingEvent[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [activeBookingId, setActiveBookingId] = useState<string | null>(bookingId || null);
+
+  const [counterInput, setCounterInput] = useState("");
+  const [actionLoading, setActionLoading] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState("Change of plans");
+
   const [proof, setProof] = useState(false);
-  const [partsApproved, setPartsApproved] = useState(false);
   const [showCallModal, setShowCallModal] = useState(false);
   const [showSOSModal, setShowSOSModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
@@ -482,14 +578,110 @@ export function Tracking({
   const [reportSubmitted, setReportSubmitted] = useState(false);
   const [toast, setToast] = useState("");
 
-  const partsPrice = partsApproved ? 120 : 0;
-  const currentTotal = price + partsPrice;
+  // Load real booking from Supabase
+  const loadBookingData = useCallback(async () => {
+    let targetId = activeBookingId;
+    if (!targetId) {
+      const custRes = await fetchCustomerBookings();
+      if (custRes.data && custRes.data.length > 0) {
+        targetId = custRes.data[0].id;
+        setActiveBookingId(targetId);
+      }
+    }
+
+    if (!targetId) return;
+
+    setLoading(true);
+    const [bRes, oRes, eRes] = await Promise.all([
+      fetchBookingById(targetId),
+      fetchBookingOffers(targetId),
+      fetchBookingEvents(targetId),
+    ]);
+    setLoading(false);
+
+    if (bRes.data) setDbBooking(bRes.data);
+    if (oRes.data) setDbOffers(oRes.data);
+    if (eRes.data) setDbEvents(eRes.data);
+  }, [activeBookingId]);
 
   useEffect(() => {
-    if (stage >= 4) return;
-    const t = setTimeout(() => setStage((s) => Math.min(4, s + 1)), 9000);
-    return () => clearTimeout(t);
-  }, [stage]);
+    loadBookingData();
+  }, [loadBookingData]);
+
+  // Derive stage from genuine database status
+  const currentStatus = dbBooking?.booking_status || "pending";
+  let stage = 0;
+  if (currentStatus === "pending" || currentStatus === "negotiating") stage = 0;
+  else if (currentStatus === "accepted") stage = 1;
+  else if (currentStatus === "on_the_way") stage = 2;
+  else if (currentStatus === "in_progress") stage = 3;
+  else if (currentStatus === "completed") stage = 4;
+  else if (currentStatus === "cancelled") stage = -1;
+
+  const currentPrice = dbBooking ? Number(dbBooking.locked_price) : price;
+  const partsPrice = partsApproved ? 120 : (dbBooking?.spare_parts_amount ? Number(dbBooking.spare_parts_amount) : 0);
+  const currentTotal = currentPrice + partsPrice;
+  const bookingNumber = dbBooking?.booking_number || "BK-DEMO-2481";
+
+  const workerDisplayName = dbBooking?.worker?.full_name || staticWorker.name;
+  const workerAvatar = dbBooking?.worker?.avatar_url || staticWorker.photo;
+
+  // FairFare Actions
+  const latestOffer = dbOffers[dbOffers.length - 1];
+  const pendingWorkerOffer = dbOffers.find(
+    (o) => o.offer_status === "pending" && o.proposer_role === "worker"
+  );
+
+  const handleAcceptOffer = async (offer: DbNegotiationOffer) => {
+    if (!activeBookingId || actionLoading) return;
+    setActionLoading(true);
+    setStatusMessage(null);
+    const res = await acceptOffer(activeBookingId, offer.id, offer.offered_price);
+    setActionLoading(false);
+    if (!res.success) {
+      setStatusMessage(res.error || "Failed to accept offer");
+    } else {
+      setToast(`Offer accepted at ₹${offer.offered_price}! Booking confirmed 🎉`);
+      setTimeout(() => setToast(""), 3000);
+      loadBookingData();
+    }
+  };
+
+  const handleSendCounter = async () => {
+    if (!activeBookingId || actionLoading) return;
+    const priceVal = parseInt(counterInput.replace(/[^0-9]/g, ""), 10);
+    if (!priceVal || priceVal <= 0) {
+      setStatusMessage("Please enter a valid counteroffer amount");
+      return;
+    }
+    setActionLoading(true);
+    setStatusMessage(null);
+    const res = await submitCounterOffer(activeBookingId, priceVal, `Customer countered with ₹${priceVal}`);
+    setActionLoading(false);
+    setCounterInput("");
+    if (!res.success) {
+      setStatusMessage(res.error || "Failed to submit counteroffer");
+    } else {
+      setToast(`Counteroffer ₹${priceVal} submitted to worker!`);
+      setTimeout(() => setToast(""), 3000);
+      loadBookingData();
+    }
+  };
+
+  const handleCancelBooking = async () => {
+    if (!activeBookingId || actionLoading) return;
+    setActionLoading(true);
+    const res = await updateBookingStatus(activeBookingId, "cancelled", cancelReason);
+    setActionLoading(false);
+    setShowCancelModal(false);
+    if (!res.success) {
+      setStatusMessage(res.error || "Failed to cancel booking");
+    } else {
+      setToast("Booking has been cancelled");
+      setTimeout(() => setToast(""), 3000);
+      loadBookingData();
+    }
+  };
 
   const triggerSOS = () => {
     setSosActive(true);
@@ -499,7 +691,7 @@ export function Tracking({
 
   const handleReportSubmit = () => {
     setReportSubmitted(true);
-    setToast("Issue report filed (#REP-8421). Our admin team is reviewing it.");
+    setToast(`Issue report filed for ${bookingNumber}. Our safety team is reviewing it.`);
     setTimeout(() => {
       setToast("");
       setShowReportModal(false);
@@ -507,104 +699,241 @@ export function Tracking({
     }, 2500);
   };
 
-  const handleSendChat = () => {
-    if (!msg.trim()) return;
-    setChat((c) => [...c, { from: "me", text: msg.trim() }]);
-    setMsg("");
-    setTimeout(() => {
-      setChat((c) => [...c, { from: "worker", text: "Ji, noted! Reach quickly. 👍" }]);
-    }, 1000);
-  };
-
-  const handleVoiceSim = () => {
-    setToast("🎙️ Listening... Recording voice note");
-    setTimeout(() => {
-      setChat((c) => [...c, { from: "me", text: "Please call when you reach gate. (Voice Note)" }]);
-      setToast("Voice note sent to " + w.name.split(" ")[0]);
-      setTimeout(() => setToast(""), 2000);
-    }, 1500);
-  };
-
   return (
     <div className="page-enter mx-auto max-w-6xl px-4 pb-32 pt-5 sm:px-6 md:pb-16">
-      <div className="flex items-center justify-between">
-        <button onClick={() => go("customer-home")} className="flex items-center gap-1.5 rounded-full bg-white px-3.5 py-2 text-[13px] font-bold ring-1 ring-[#1B4332]/12"><ChevronLeft className="h-4 w-4" /> Home</button>
-        <span className="rounded-full bg-[#1B4332] px-3.5 py-1.5 text-[12px] font-extrabold text-white">Booking #SH-2481 • {w.service} • ₹{currentTotal}</span>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <button onClick={() => go("customer-home")} className="flex items-center gap-1.5 rounded-full bg-white px-3.5 py-2 text-[13px] font-bold ring-1 ring-[#1B4332]/12">
+          <ChevronLeft className="h-4 w-4" /> Home
+        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={loadBookingData}
+            title="Refresh database state"
+            className="flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-[#1B4332] ring-1 ring-[#1B4332]/15 hover:bg-[#FAF9F6]"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+            Sync status
+          </button>
+          <span className="rounded-full bg-[#1B4332] px-3.5 py-1.5 text-[12px] font-extrabold text-white">
+            {bookingNumber} • {dbBooking?.job_title || staticWorker.service} • ₹{currentTotal}
+          </span>
+        </div>
       </div>
+
+      {statusMessage && (
+        <div className="animate-fade-in mt-3 flex items-center gap-2 rounded-2xl bg-[#FFEBEE] px-4 py-2.5 text-[12.5px] font-bold text-[#C62828] ring-1 ring-[#EF5350]/30">
+          <AlertCircle className="h-4 w-4 shrink-0 text-[#C62828]" />
+          <span>{statusMessage}</span>
+        </div>
+      )}
+
+      {currentStatus === "cancelled" && (
+        <div className="animate-fade-in mt-3 rounded-2xl bg-[#FFEBEE] p-4 text-center text-[13.5px] font-extrabold text-[#C62828] ring-1 ring-[#EF5350]/30">
+          ⚠️ This booking was cancelled. No charges applied.
+        </div>
+      )}
 
       <div className="mt-4 grid items-start gap-5 lg:grid-cols-[1fr_380px]">
         <div>
-          {/* ETA hero */}
+          {/* Status hero */}
           <div className="relative overflow-hidden rounded-[22px] bg-[#122b21] p-5 text-white card-shadow-lg sm:p-6">
             <div className="jaali-pattern absolute inset-0 opacity-40" />
             <div className="relative flex flex-wrap items-center gap-4">
               <div className="relative">
-                <img src={w.photo} alt={w.name} className="h-20 w-20 rounded-2xl object-cover ring-2 ring-[#52B788]" />
+                <img src={workerAvatar} alt={workerDisplayName} className="h-20 w-20 rounded-2xl object-cover ring-2 ring-[#52B788]" />
                 <span className="absolute -bottom-1.5 -right-1.5 grid h-7 w-7 place-items-center rounded-full bg-[#2D6A4F] ring-2 ring-[#122b21]"><CheckCircle2 className="h-4 w-4" /></span>
               </div>
               <div className="min-w-0 flex-1">
-                <p className="flex items-center gap-1.5 text-[17px] font-extrabold">{w.name} <BadgeCheck className="h-4.5 w-4.5 fill-[#52B788] text-white" /></p>
-                <p className="text-[12.5px] font-semibold text-white/70">{w.service} • {cfg.title} • ◆ {w.trustDNA} TrustDNA • {w.rating} ★</p>
+                <p className="flex items-center gap-1.5 text-[17px] font-extrabold">
+                  {workerDisplayName} <BadgeCheck className="h-4.5 w-4.5 fill-[#52B788] text-white" />
+                </p>
+                <p className="text-[12.5px] font-semibold text-white/70">
+                  {dbBooking?.job_title || staticWorker.service} • ◆ {staticWorker.trustDNA} TrustDNA • {staticWorker.rating} ★
+                </p>
                 <p className="mt-1.5 flex items-center gap-1.5 text-[13px] font-extrabold text-[#F4A261]">
-                  <Navigation className="h-4 w-4" />
-                  {schedule === "asap"
-                    ? (stage < 2 ? `Arriving ${w.eta}` : stage === 2 ? "Arriving in ~8 mins" : stage === 3 ? "At your home — work started" : "Work completed ✓")
-                    : (stage < 2 ? `Slot: ${date}` : stage === 2 ? `Arriving for scheduled slot (${date})` : stage === 3 ? "At your home — work started" : "Work completed ✓")}
+                  <Clock className="h-4 w-4" />
+                  {currentStatus === "pending"
+                    ? "Requested — Waiting for worker confirmation"
+                    : currentStatus === "negotiating"
+                    ? "FairFare Negotiation in progress"
+                    : currentStatus === "accepted"
+                    ? `Booking confirmed at ₹${currentPrice} — preparing arrival`
+                    : currentStatus === "on_the_way"
+                    ? `Worker on the way to ${dbBooking?.service_address || address}`
+                    : currentStatus === "in_progress"
+                    ? "Work currently in progress at your address"
+                    : currentStatus === "completed"
+                    ? "Service completed successfully ✓"
+                    : "Booking cancelled"}
                 </p>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => setChatOpen(!chatOpen)} aria-label="Open chat" className="grid h-12 w-12 place-items-center rounded-full bg-white/10 ring-1 ring-white/20 transition hover:bg-white/20"><MessageCircle className="h-5 w-5" /></button>
-                <button onClick={() => setShowCallModal(true)} aria-label="Call worker" className="grid h-12 w-12 place-items-center rounded-full bg-[#E76F51] transition hover:bg-[#c65a3a]"><Phone className="h-5 w-5" /></button>
+                <button onClick={() => setShowCallModal(true)} aria-label="Call worker" className="grid h-12 w-12 place-items-center rounded-full bg-[#E76F51] transition hover:bg-[#c65a3a]">
+                  <Phone className="h-5 w-5" />
+                </button>
               </div>
             </div>
-            {/* progress */}
-            <div className="relative mt-5">
-              <div className="absolute left-0 right-0 top-[15px] h-1 rounded-full bg-white/15" />
-              <div className="absolute left-0 top-[15px] h-1 rounded-full bg-[#52B788] transition-all duration-700" style={{ width: `${(stage / (stages.length - 1)) * 100}%` }} />
-              <div className="relative flex justify-between">
-                {stages.map((s, i) => (
-                  <div key={s} className="flex w-14 flex-col items-center gap-1.5 text-center">
-                    <span className={`grid h-8 w-8 place-items-center rounded-full text-[12px] font-extrabold ring-2 transition ${i < stage ? "bg-[#52B788] text-white ring-[#52B788]" : i === stage ? "bg-white text-[#1B4332] ring-white animate-pulse-ring" : "bg-white/10 text-white/50 ring-white/20"}`}>
-                      {i < stage ? "✓" : i + 1}
-                    </span>
-                    <span className={`text-[9.5px] font-extrabold leading-tight sm:text-[10.5px] ${i <= stage ? "text-white" : "text-white/40"}`}>{s}</span>
+
+            {/* Lifecycle Progress Bar */}
+            {currentStatus !== "cancelled" && (
+              <div className="relative mt-5">
+                <div className="absolute left-0 right-0 top-[15px] h-1 rounded-full bg-white/15" />
+                <div className="absolute left-0 top-[15px] h-1 rounded-full bg-[#52B788] transition-all duration-700" style={{ width: `${(Math.max(0, stage) / (stages.length - 1)) * 100}%` }} />
+                <div className="relative flex justify-between">
+                  {stages.map((s, i) => (
+                    <div key={s} className="flex w-14 flex-col items-center gap-1.5 text-center">
+                      <span className={`grid h-8 w-8 place-items-center rounded-full text-[12px] font-extrabold ring-2 transition ${i < stage ? "bg-[#52B788] text-white ring-[#52B788]" : i === stage ? "bg-white text-[#1B4332] ring-white animate-pulse-ring" : "bg-white/10 text-white/50 ring-white/20"}`}>
+                        {i < stage ? "✓" : i + 1}
+                      </span>
+                      <span className={`text-[9.5px] font-extrabold leading-tight sm:text-[10.5px] ${i <= stage ? "text-white" : "text-white/40"}`}>{s}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* FAIRFARE NEGOTIATION PANEL (Database-backed) */}
+          {(currentStatus === "pending" || currentStatus === "negotiating" || dbOffers.length > 0) && (
+            <div className="mt-4 overflow-hidden rounded-[22px] bg-white ring-1 ring-[#1B4332]/10 card-shadow">
+              <div className="flex items-center justify-between bg-[#FAF9F6] px-5 py-3.5 border-b border-[#1B4332]/8">
+                <p className="flex items-center gap-2 text-[14px] font-extrabold text-[#1B4332]">
+                  <Sparkles className="h-4 w-4 text-[#E76F51]" /> FairFare™ Negotiation History
+                </p>
+                <span className="rounded-full bg-[#1B4332]/10 px-3 py-1 text-xs font-extrabold text-[#1B4332]">
+                  {currentStatus === "accepted" ? "Locked at ₹" + currentPrice : "Negotiation Active"}
+                </span>
+              </div>
+              <div className="p-4 sm:p-5 space-y-3">
+                {dbOffers.length === 0 ? (
+                  <p className="text-xs text-[#4A4A4A] font-semibold">Initial booking offer: ₹{currentPrice} submitted.</p>
+                ) : (
+                  dbOffers.map((o) => (
+                    <div
+                      key={o.id}
+                      className={`flex ${o.proposer_role === "customer" ? "justify-end" : "justify-start"}`}
+                    >
+                      <div className={`max-w-[85%] rounded-2xl p-3.5 card-shadow ${o.proposer_role === "customer" ? "bg-[#1B4332] text-white rounded-tr-sm" : "bg-[#FAF9F6] ring-1 ring-[#1B4332]/12 rounded-tl-sm text-[#1A1A1A]"}`}>
+                        <div className="flex items-center justify-between gap-3 mb-1">
+                          <span className={`text-[10px] font-extrabold uppercase ${o.proposer_role === "customer" ? "text-white/70" : "text-[#2D6A4F]"}`}>
+                            {o.proposer_role === "customer" ? "You" : workerDisplayName} • Round {o.round_number}
+                          </span>
+                          <span className={`rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase ${o.offer_status === "accepted" ? "bg-[#2D6A4F] text-white" : o.offer_status === "pending" ? "bg-[#E76F51] text-white" : "bg-black/10 text-gray-700"}`}>
+                            {o.offer_status}
+                          </span>
+                        </div>
+                        <p className="text-[13px] font-semibold">{o.message || `Offered ₹${o.offered_price}`}</p>
+                        <p className={`mt-1 text-[16px] font-black ${o.proposer_role === "customer" ? "text-[#52B788]" : "text-[#E76F51]"}`}>
+                          ₹{o.offered_price}
+                        </p>
+                        <p className={`mt-0.5 text-right text-[10px] font-semibold ${o.proposer_role === "customer" ? "text-white/60" : "text-[#8a8a8a]"}`}>
+                          {new Date(o.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                )}
+
+                {/* Counter / Accept actions if worker counteroffered */}
+                {pendingWorkerOffer && currentStatus !== "accepted" && currentStatus !== "completed" && (
+                  <div className="animate-slide-up rounded-2xl bg-[#EFFAF1] p-4 ring-1 ring-[#2D6A4F]/25 mt-3">
+                    <p className="text-xs font-bold text-[#1B4332]">
+                      {workerDisplayName} countered at <span className="font-extrabold text-[15px] text-[#2D6A4F]">₹{pendingWorkerOffer.offered_price}</span>. Accept this price or submit a new counteroffer below:
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        onClick={() => handleAcceptOffer(pendingWorkerOffer)}
+                        disabled={actionLoading}
+                        className="rounded-full bg-[#1B4332] px-5 py-2.5 text-xs font-extrabold text-white transition hover:bg-[#2D6A4F]"
+                      >
+                        Accept ₹{pendingWorkerOffer.offered_price} ✓
+                      </button>
+                    </div>
                   </div>
-                ))}
+                )}
+
+                {/* Customer counteroffer input */}
+                {(currentStatus === "pending" || currentStatus === "negotiating") && (
+                  <div className="pt-2 border-t border-[#1B4332]/10 mt-3 flex gap-2">
+                    <div className="flex flex-1 items-center gap-2 rounded-full bg-[#FAF9F6] px-4 ring-1 ring-[#1B4332]/15 focus-within:ring-[#2D6A4F]">
+                      <span className="text-[14px] font-extrabold text-[#1B4332]">₹</span>
+                      <input
+                        value={counterInput}
+                        onChange={(e) => setCounterInput(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleSendCounter()}
+                        inputMode="numeric"
+                        placeholder="Offer a new price…"
+                        className="h-11 w-full bg-transparent text-[14px] font-bold outline-none"
+                      />
+                    </div>
+                    <button
+                      onClick={handleSendCounter}
+                      disabled={actionLoading}
+                      className="rounded-full bg-[#E76F51] px-5 py-2.5 text-xs font-extrabold text-white transition hover:bg-[#c65a3a]"
+                    >
+                      Counter →
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
-            {/* demo stepper */}
-            <div className="relative mt-4 flex flex-wrap items-center gap-2 rounded-2xl bg-white/8 p-2.5 ring-1 ring-white/10">
-              <span className="px-2 text-[11px] font-extrabold uppercase tracking-wide text-white/50">Simulate status:</span>
-              {stages.map((s, i) => (
-                <button key={s} onClick={() => setStage(i)} className={`rounded-full px-3 py-1.5 text-[11.5px] font-extrabold transition ${stage === i ? "bg-[#F4A261] text-[#122b21]" : "bg-white/10 text-white/70 hover:bg-white/20"}`}>{s}</button>
-              ))}
+          )}
+
+          {/* VERIFIED BOOKING MILESTONES & AUDIT TIMELINE (Replaces simulated fake GPS) */}
+          <div className="mt-4 rounded-[22px] bg-white p-5 ring-1 ring-[#1B4332]/10 card-shadow sm:p-6">
+            <div className="flex items-center justify-between">
+              <p className="flex items-center gap-2 text-[15px] font-extrabold text-[#1A1A1A]">
+                <ShieldCheck className="h-5 w-5 text-[#2D6A4F]" /> Verified Booking Milestones & Audit
+              </p>
+              <span className="rounded-full bg-[#EFFAF1] px-2.5 py-1 text-[11px] font-extrabold text-[#1B4332]">
+                Database Logged
+              </span>
             </div>
+            <p className="mt-1 text-xs font-semibold text-[#4A4A4A]">
+              Real-time audit trail stored in Supabase with timestamps and actor verification.
+            </p>
+
+            <div className="mt-4 space-y-3">
+              {dbEvents.length === 0 ? (
+                <div className="rounded-xl bg-[#FAF9F6] p-3 text-xs font-medium text-[#4A4A4A]">
+                  Initial booking request submitted to {workerDisplayName}. Awaiting worker response.
+                </div>
+              ) : (
+                dbEvents.map((e, idx) => (
+                  <div key={e.id || idx} className="flex items-start gap-3 text-xs">
+                    <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#EFFAF1] text-[#2D6A4F] ring-1 ring-[#2D6A4F]/20">
+                      <CheckCheck className="h-3.5 w-3.5" />
+                    </span>
+                    <div className="flex-1">
+                      <p className="font-extrabold text-[#1A1A1A]">{e.notes || e.event_type}</p>
+                      <p className="text-[11px] font-semibold text-[#8a8a8a]">
+                        {new Date(e.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Cancel booking option */}
+            {["pending", "negotiating", "accepted", "on_the_way"].includes(currentStatus) && (
+              <div className="mt-5 border-t border-[#1B4332]/10 pt-3 flex justify-end">
+                <button
+                  onClick={() => setShowCancelModal(true)}
+                  className="text-xs font-bold text-[#C62828] hover:underline"
+                >
+                  Cancel this booking
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* Map tracking */}
-          <div className="dot-grid relative mt-4 h-56 overflow-hidden rounded-[22px] bg-[#EDE8DA] ring-1 ring-[#1B4332]/12">
-            <svg className="absolute inset-0 h-full w-full" preserveAspectRatio="none" viewBox="0 0 800 300">
-              <path d="M-20,150 C200,120 350,200 820,140" stroke="#fff" strokeWidth="30" fill="none" strokeLinecap="round" />
-              <path d="M300,-20 C320,100 280,200 310,320" stroke="#fff" strokeWidth="18" fill="none" />
-              <path d="M-20,150 C200,120 350,200 820,140" stroke="#2D6A4F" strokeWidth="4" strokeDasharray="12 10" fill="none" />
-            </svg>
-            <div className="absolute left-[16%] top-1/2 -translate-y-1/2 text-center">
-              <div className="animate-float-slow grid h-12 w-12 place-items-center rounded-full bg-[#E76F51] text-white ring-4 ring-white card-shadow-lg"><span className="text-lg font-black">{w.name[0]}</span></div>
-              <p className="mt-1 rounded-full bg-white px-2.5 py-0.5 text-[10px] font-extrabold card-shadow">{w.name.split(" ")[0]} • 0.4 km</p>
-            </div>
-            <div className="absolute right-[14%] top-1/2 -translate-y-1/2 text-center">
-              <div className="grid h-12 w-12 place-items-center rounded-full bg-[#1B4332] text-white ring-4 ring-white card-shadow-lg"><MapPin className="h-5 w-5" /></div>
-              <p className="mt-1 rounded-full bg-white px-2.5 py-0.5 text-[10px] font-extrabold card-shadow">Your home</p>
-            </div>
-            <p className="absolute bottom-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#122b21] px-4 py-1.5 text-[11.5px] font-extrabold text-white">Live location shared with family ✓</p>
-          </div>
-
-          {/* Proof of Work */}
+          {/* Proof of Work & Payment confirmation */}
           <div className="mt-4 rounded-[22px] bg-white p-5 ring-1 ring-[#1B4332]/10 card-shadow sm:p-6">
             <p className="flex items-center gap-2 text-[15px] font-extrabold">
-              <Camera className="h-5 w-5 text-[#E76F51]" /> Proof of Work ({w.service}) {stage >= 3 && <span className="rounded-full bg-[#EFFAF1] px-2.5 py-0.5 text-[11px] text-[#1B4332]">photos confirmed</span>}
+              <Camera className="h-5 w-5 text-[#E76F51]" /> Proof of Work ({dbBooking?.job_title || staticWorker.service})
             </p>
-            {stage >= 3 ? (
+            {stage >= 3 || currentStatus === "completed" ? (
               <div className="animate-fade-in mt-3">
                 <div className="grid grid-cols-2 gap-3">
                   <figure className="overflow-hidden rounded-2xl ring-1 ring-[#1B4332]/12">
@@ -622,14 +951,16 @@ export function Tracking({
                 </label>
                 <button
                   disabled={!proof}
-                  onClick={() => go("payment", { workerId: w.id, price, partsApproved, schedule, date, address })}
+                  onClick={() => go("payment", { workerId: staticWorker.id, price: currentPrice, partsApproved, schedule, date, address })}
                   className={`mt-3 w-full rounded-2xl py-4 text-[15px] font-extrabold text-white transition ${proof ? "bg-[#1B4332] hover:bg-[#2D6A4F]" : "cursor-not-allowed bg-[#d8cfbe]"}`}
                 >
                   Confirm & Pay ₹{currentTotal} →
                 </button>
               </div>
             ) : (
-              <p className="mt-2 text-[13px] font-semibold text-[#4A4A4A]">{w.name.split(" ")[0]} will upload verified before/after photos once work commences at your home.</p>
+              <p className="mt-2 text-[13px] font-semibold text-[#4A4A4A]">
+                {workerDisplayName} will upload verified before/after photos once work commences at your home.
+              </p>
             )}
           </div>
         </div>
@@ -640,7 +971,7 @@ export function Tracking({
             <p className="flex items-center gap-2 text-[14px] font-extrabold"><FileText className="h-4 w-4" /> Live invoice breakdown</p>
             <div className="mt-3 space-y-2 text-[13px] font-semibold text-[#4A4A4A]">
               <p className="flex justify-between">
-                FairFare agreed service price <span className="font-extrabold text-[#1A1A1A]">₹{price}</span>
+                FairFare agreed service price <span className="font-extrabold text-[#1A1A1A]">₹{currentPrice}</span>
               </p>
               
               <label className="flex items-center justify-between rounded-xl bg-[#FAF9F6] p-2 text-xs font-bold ring-1 ring-[#1B4332]/8 cursor-pointer">
@@ -648,7 +979,7 @@ export function Tracking({
                   <input
                     type="checkbox"
                     checked={partsApproved}
-                    onChange={(e) => setPartsApproved(e.target.checked)}
+                    onChange={(e) => setPartsApproved && setPartsApproved(e.target.checked)}
                     className="accent-[#1B4332]"
                   />
                   Extra parts/supplies (receipt verified)
@@ -676,37 +1007,40 @@ export function Tracking({
                 Report issue
               </button>
             </div>
-            <p className="mt-2.5 text-[11.5px] font-semibold text-[#9c3d1e]/80">Job GPS + worker ID shared with your emergency contacts. Saharaa Safety Helpline: 1800-SAHARAA</p>
+            <p className="mt-2.5 text-[11.5px] font-semibold text-[#9c3d1e]/80">Booking record & worker identity logged with emergency safety desk.</p>
           </div>
-
-          {/* chat */}
-          {chatOpen && (
-            <div className="animate-slide-up overflow-hidden rounded-[22px] bg-white ring-1 ring-[#1B4332]/12 card-shadow-lg">
-              <p className="bg-[#1B4332] px-4 py-3 text-[13px] font-extrabold text-white">Chat with {w.name.split(" ")[0]} • online</p>
-              <div className="max-h-48 space-y-2 overflow-y-auto bg-[#FAF9F6] p-3.5">
-                {chat.map((c, i) => (
-                  <p key={i} className={`w-fit max-w-[85%] rounded-2xl px-3.5 py-2 text-[13px] font-semibold ${c.from === "me" ? "ml-auto bg-[#1B4332] text-white rounded-tr-md" : "bg-white ring-1 ring-[#1B4332]/10 rounded-tl-md"}`}>{c.text}</p>
-                ))}
-              </div>
-              <div className="flex gap-2 p-2.5">
-                <input
-                  value={msg}
-                  onChange={(e) => setMsg(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSendChat()}
-                  placeholder="Type message…"
-                  className="h-10 w-full rounded-full bg-[#FAF9F6] px-4 text-[13px] font-semibold outline-none ring-1 ring-[#1B4332]/12"
-                />
-                <button onClick={handleSendChat} aria-label="Send" className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#1B4332] text-white">
-                  <Send className="h-4 w-4" />
-                </button>
-                <button onClick={handleVoiceSim} aria-label="Voice" className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#E76F51] text-white">
-                  <Mic className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          )}
         </aside>
       </div>
+
+      {/* Cancel Modal */}
+      {showCancelModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-sm rounded-[24px] bg-white p-6 shadow-2xl ring-1 ring-[#1B4332]/10 animate-slide-up">
+            <h3 className="text-[17px] font-extrabold text-[#1A1A1A]">Cancel booking?</h3>
+            <p className="mt-1 text-xs font-semibold text-[#4A4A4A]">Free cancellation. The worker will be notified immediately.</p>
+            <div className="mt-3 space-y-2 text-xs font-bold">
+              <select
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                className="w-full rounded-xl bg-[#FAF9F6] p-2.5 ring-1 ring-[#1B4332]/12 outline-none"
+              >
+                <option>Change of plans / rescheduled</option>
+                <option>Price negotiation not agreeable</option>
+                <option>Booked another worker</option>
+                <option>Booked by mistake</option>
+              </select>
+              <button
+                disabled={actionLoading}
+                onClick={handleCancelBooking}
+                className="w-full rounded-2xl bg-[#C62828] py-3 text-xs font-extrabold text-white transition hover:bg-[#b71c1c]"
+              >
+                {actionLoading ? "Cancelling…" : "Yes, cancel booking"}
+              </button>
+              <button onClick={() => setShowCancelModal(false)} className="w-full py-1 text-center text-xs font-bold text-[#8a8a8a]">Keep booking</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* SOS Modal */}
       {showSOSModal && (
@@ -740,7 +1074,7 @@ export function Tracking({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-fade-in">
           <div className="w-full max-w-sm rounded-[24px] bg-white p-6 shadow-2xl ring-1 ring-[#1B4332]/10 animate-slide-up">
             <h3 className="text-[17px] font-extrabold text-[#1A1A1A]">Report an issue</h3>
-            <p className="mt-1 text-xs font-semibold text-[#4A4A4A]">Booking #SH-2481 with {w.name}</p>
+            <p className="mt-1 text-xs font-semibold text-[#4A4A4A]">Booking {bookingNumber} with {workerDisplayName}</p>
             <div className="mt-3 space-y-2 text-xs font-bold">
               <select className="w-full rounded-xl bg-[#FAF9F6] p-2.5 ring-1 ring-[#1B4332]/12 outline-none">
                 <option>Price dispute / asking cash beyond locked price</option>
@@ -772,9 +1106,9 @@ export function Tracking({
       {showCallModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-fade-in">
           <div className="w-full max-w-sm rounded-[24px] bg-white p-6 shadow-2xl ring-1 ring-[#1B4332]/10 text-center animate-slide-up">
-            <img src={w.photo} alt={w.name} className="mx-auto h-20 w-20 rounded-full object-cover ring-4 ring-[#52B788]" />
-            <h3 className="mt-3 text-[18px] font-extrabold">{w.name}</h3>
-            <p className="text-xs font-semibold text-[#4A4A4A]">{w.service} • Arriving {w.eta}</p>
+            <img src={workerAvatar} alt={workerDisplayName} className="mx-auto h-20 w-20 rounded-full object-cover ring-4 ring-[#52B788]" />
+            <h3 className="mt-3 text-[18px] font-extrabold">{workerDisplayName}</h3>
+            <p className="text-xs font-semibold text-[#4A4A4A]">{dbBooking?.job_title || staticWorker.service}</p>
             <div className="mt-4 rounded-2xl bg-[#EFFAF1] p-3 text-left text-xs font-bold text-[#1B4332] ring-1 ring-[#2D6A4F]/20">
               <ShieldCheck className="inline h-4 w-4 text-[#2D6A4F] mr-1.5" />
               Connected via Saharaa Privacy Masking Line. Your real number stays private.
@@ -782,7 +1116,7 @@ export function Tracking({
             <p className="mt-3 text-xs font-bold text-[#4A4A4A]">Masked call number: <span className="font-extrabold text-[#1A1A1A]">+91 98118-XX482</span></p>
             <div className="mt-4 grid gap-2">
               <a href="tel:18007242722" className="block w-full rounded-2xl bg-[#1B4332] py-3.5 text-xs font-extrabold text-white">
-                📞 Call {w.name.split(" ")[0]} Now
+                📞 Call {workerDisplayName.split(" ")[0]} Now
               </a>
               <button onClick={() => setShowCallModal(false)} className="text-xs font-bold text-[#8a8a8a]">Cancel</button>
             </div>
@@ -796,7 +1130,7 @@ export function Tracking({
         </div>
       )}
 
-      <CustomerBottomNav page="tracking" go={go} onBook={() => go("booking", w.id)} />
+      <CustomerBottomNav page="tracking" go={go} onBook={() => go("booking", staticWorker.id)} />
     </div>
   );
 }

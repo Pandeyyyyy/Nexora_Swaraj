@@ -1,13 +1,17 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import {
   BadgeCheck, Camera, CheckCircle2, ChevronLeft, ChevronRight,
   ImagePlus, MapPin, MessageCircle, Navigation, Phone, ShieldCheck, Star,
-  TrendingUp, Users, Wallet, Zap, HeartHandshake, Briefcase, LogOut, FileCheck, Loader2, AlertCircle
+  TrendingUp, Users, Wallet, Zap, HeartHandshake, Briefcase, LogOut, FileCheck, Loader2, AlertCircle, RefreshCw
 } from "lucide-react";
 import { workers } from "../data";
 import { Stars, TrustRing, WorkerBottomNav } from "../components/shared";
 import type { Page } from "../components/shared";
 import { useAuth } from "../contexts/AuthContext";
+import {
+  fetchWorkerBookings, updateBookingStatus, submitCounterOffer,
+  type DbBooking
+} from "../lib/bookings";
 
 /* ================= WORKER DASHBOARD ================= */
 export function WorkerDashboard({ go, lang }: { go: (p: Page, w?: string) => void; lang: "en" | "hi" }) {
@@ -18,12 +22,69 @@ export function WorkerDashboard({ go, lang }: { go: (p: Page, w?: string) => voi
   const [updatingOnline, setUpdatingOnline] = useState(false);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
 
-  const [reqs, setReqs] = useState([
-    { id: 1, name: "Priya Sharma", job: "Kitchen tap leaking", price: 450, dist: "0.6 km", time: "ASAP", status: "new" },
-    { id: 2, name: "Amit Verma", job: "Bathroom flush repair", price: 380, dist: "1.2 km", time: "Today 4 PM", status: "new" },
-    { id: 3, name: "Kavita Rao", job: "Tank cleaning + check", price: 650, dist: "2.0 km", time: "Tomorrow", status: "negotiating" },
-  ]);
+  // Real DB bookings replacing the static mock
+  const [dbBookings, setDbBookings] = useState<DbBooking[]>([]);
+  const [bookingsLoading, setBookingsLoading] = useState(false);
+  const [bookingsError, setBookingsError] = useState<string | null>(null);
   const [toast, setToast] = useState("");
+
+  const loadWorkerBookings = useCallback(async () => {
+    if (!user?.id) return;
+    setBookingsLoading(true);
+    setBookingsError(null);
+    const res = await fetchWorkerBookings(user.id);
+    setBookingsLoading(false);
+    if (res.error) {
+      setBookingsError(res.error);
+    } else {
+      // Show only actionable bookings in the dashboard
+      setDbBookings(res.data.filter(b =>
+        b.booking_status === 'pending' ||
+        b.booking_status === 'negotiating' ||
+        b.booking_status === 'accepted' ||
+        b.booking_status === 'on_the_way' ||
+        b.booking_status === 'in_progress'
+      ));
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    loadWorkerBookings();
+  }, [loadWorkerBookings]);
+
+  const handleAcceptBooking = async (bookingId: string) => {
+    const res = await updateBookingStatus(bookingId, 'accepted', 'Worker accepted the booking');
+    if (!res.success) {
+      setToast(res.error || 'Failed to accept job');
+    } else {
+      setToast('Job accepted! Customer notified 🎉');
+      loadWorkerBookings();
+    }
+    setTimeout(() => setToast(''), 3000);
+  };
+
+  const handleDeclineBooking = async (bookingId: string) => {
+    const res = await updateBookingStatus(bookingId, 'cancelled', 'Worker declined the booking request');
+    if (!res.success) {
+      setToast(res.error || 'Failed to decline job');
+    } else {
+      setToast('Request declined politely');
+      loadWorkerBookings();
+    }
+    setTimeout(() => setToast(''), 2600);
+  };
+
+  const handleCounterBooking = async (bookingId: string, currentPrice: number) => {
+    const counter = Math.max(currentPrice, Math.round(currentPrice * 1.1 / 10) * 10);
+    const res = await submitCounterOffer(bookingId, counter, `Worker countered with ₹${counter}`);
+    if (!res.success) {
+      setToast(res.error || 'Failed to send counter-offer');
+    } else {
+      setToast(`Counter-offer ₹${counter} sent via FairFare`);
+      loadWorkerBookings();
+    }
+    setTimeout(() => setToast(''), 2600);
+  };
 
   const handleToggleOnline = async () => {
     if (updatingOnline) return;
@@ -52,11 +113,7 @@ export function WorkerDashboard({ go, lang }: { go: (p: Page, w?: string) => voi
     setTimeout(() => setToast(""), 3000);
   };
 
-  const act = (id: number, a: string) => {
-    setReqs((r) => r.filter((x) => x.id !== id));
-    setToast(a === "accept" ? "Job accepted! Customer notified 🎉" : a === "counter" ? "Counter-offer sent via FairFare" : "Request declined politely");
-    setTimeout(() => setToast(""), 2600);
-  };
+  // Legacy mock action removed — handled by handleAcceptBooking/handleDeclineBooking/handleCounterBooking
 
   const workerDisplayName = profile?.full_name || (isWorker ? "Worker" : "Ramesh Kumar");
   const isVerified = workerProfile?.verification_status === "verified";
@@ -145,41 +202,117 @@ export function WorkerDashboard({ go, lang }: { go: (p: Page, w?: string) => voi
           <div className="flex items-center justify-between">
             <h2 className="flex items-center gap-2 text-[16px] font-extrabold">
               Incoming requests
-              {online && reqs.length > 0 && <span className="grid h-6 w-6 place-items-center rounded-full bg-[#E76F51] text-[11px] text-white">{reqs.length}</span>}
+              {isOnline && dbBookings.length > 0 && (
+                <span className="grid h-6 w-6 place-items-center rounded-full bg-[#E76F51] text-[11px] text-white">
+                  {dbBookings.filter(b => b.booking_status === 'pending' || b.booking_status === 'negotiating').length}
+                </span>
+              )}
             </h2>
-            <button onClick={() => go("worker-jobs")} className="text-[12.5px] font-bold text-[#2D6A4F]">All jobs →</button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={loadWorkerBookings}
+                disabled={bookingsLoading}
+                className="rounded-full p-1.5 text-[#2D6A4F] hover:bg-[#EFFAF1] transition"
+                aria-label="Refresh bookings"
+              >
+                <RefreshCw className={`h-4 w-4 ${bookingsLoading ? 'animate-spin' : ''}`} />
+              </button>
+              <button onClick={() => go("worker-jobs")} className="text-[12.5px] font-bold text-[#2D6A4F]">All jobs →</button>
+            </div>
           </div>
-          {!online ? (
+
+          {bookingsError && (
+            <div className="mt-2 flex items-center gap-2 rounded-2xl bg-[#FFEBEE] px-4 py-2.5 text-[12px] font-bold text-[#C62828] ring-1 ring-[#EF5350]/30">
+              <AlertCircle className="h-4 w-4 shrink-0" /> {bookingsError}
+            </div>
+          )}
+
+          {bookingsLoading ? (
+            <div className="mt-4 flex items-center justify-center gap-2 py-8 text-[13px] font-semibold text-[#4A4A4A]">
+              <Loader2 className="h-5 w-5 animate-spin text-[#2D6A4F]" /> Loading your bookings…
+            </div>
+          ) : !isOnline ? (
             <div className="mt-3 rounded-[20px] border-2 border-dashed border-[#1B4332]/15 bg-white/60 p-8 text-center">
               <p className="text-[15px] font-extrabold">You're offline 😴</p>
               <p className="mx-auto mt-1 max-w-xs text-[13px] font-medium text-[#4A4A4A]">Go online to start receiving nearby job requests instantly.</p>
             </div>
-          ) : reqs.length === 0 ? (
+          ) : dbBookings.length === 0 ? (
             <div className="mt-3 rounded-[20px] border-2 border-dashed border-[#2D6A4F]/25 bg-[#EFFAF1]/60 p-8 text-center">
               <p className="text-[15px] font-extrabold text-[#1B4332]">All caught up! 🎉</p>
-              <p className="mx-auto mt-1 max-w-xs text-[13px] font-medium text-[#4A4A4A]">New requests will appear here with a sound. Great response rate keeps you on top!</p>
+              <p className="mx-auto mt-1 max-w-xs text-[13px] font-medium text-[#4A4A4A]">New requests will appear here. Great response rate keeps you on top!</p>
             </div>
           ) : (
             <div className="mt-3 space-y-3">
-              {reqs.map((r) => (
-                <div key={r.id} className="animate-chat-in overflow-hidden rounded-[20px] bg-white ring-1 ring-[#1B4332]/10 card-shadow">
-                  <div className="flex items-center gap-1.5 bg-[#FEF6EC] px-4 py-2 text-[11px] font-extrabold text-[#9c3d1e]">
-                    <Zap className="h-3.5 w-3.5" /> {r.time} • {r.dist} away {r.status === "negotiating" && "• countered ₹600"}
-                  </div>
-                  <div className="p-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-[15px] font-extrabold">{r.name}</p>
-                      <p className="text-[18px] font-extrabold text-[#1B4332]">₹{r.price}</p>
+              {dbBookings.map((b) => {
+                const isPending = b.booking_status === 'pending';
+                const isNegotiating = b.booking_status === 'negotiating';
+                const isActive = b.booking_status === 'accepted' || b.booking_status === 'on_the_way' || b.booking_status === 'in_progress';
+                const customerName = b.customer?.full_name || 'Customer';
+                const lockedPrice = Number(b.locked_price);
+                const bookingTime = b.booking_type === 'asap' ? 'ASAP' : (b.scheduled_at ? new Date(b.scheduled_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : 'Scheduled');
+                return (
+                  <div key={b.id} className="animate-chat-in overflow-hidden rounded-[20px] bg-white ring-1 ring-[#1B4332]/10 card-shadow">
+                    <div className={`flex items-center gap-1.5 px-4 py-2 text-[11px] font-extrabold ${
+                      isActive ? 'bg-[#EFFAF1] text-[#1B4332]' :
+                      isNegotiating ? 'bg-[#FFF8E7] text-[#9c3d1e]' :
+                      'bg-[#FEF6EC] text-[#9c3d1e]'
+                    }`}>
+                      <Zap className="h-3.5 w-3.5" />
+                      {bookingTime}
+                      {isNegotiating && ' • Negotiating'}
+                      {isActive && ` • ${b.booking_status.replace('_', ' ').toUpperCase()}`}
+                      <span className="ml-auto font-bold text-[#8a8a8a]">{b.booking_number}</span>
                     </div>
-                    <p className="mt-0.5 text-[13px] font-semibold text-[#4A4A4A]">{r.job}</p>
-                    <div className="mt-3 grid grid-cols-3 gap-2">
-                      <button onClick={() => act(r.id, "accept")} className="rounded-2xl bg-[#1B4332] py-3 text-[13px] font-extrabold text-white transition hover:bg-[#2D6A4F]">Accept</button>
-                      <button onClick={() => act(r.id, "counter")} className="rounded-2xl bg-[#FEF6EC] py-3 text-[13px] font-extrabold text-[#c65a3a] ring-1 ring-[#E76F51]/30">Counter</button>
-                      <button onClick={() => act(r.id, "reject")} className="rounded-2xl py-3 text-[13px] font-extrabold text-[#8a8a8a] ring-1 ring-[#1B4332]/12">Decline</button>
+                    <div className="p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[15px] font-extrabold">{customerName}</p>
+                        <p className="text-[18px] font-extrabold text-[#1B4332]">₹{lockedPrice}</p>
+                      </div>
+                      <p className="mt-0.5 text-[13px] font-semibold text-[#4A4A4A]">{b.job_title}</p>
+                      {b.service_address && (
+                        <p className="mt-1 flex items-center gap-1 text-[12px] font-semibold text-[#8a8a8a]">
+                          <MapPin className="h-3.5 w-3.5" /> {b.service_address}
+                        </p>
+                      )}
+                      {(isPending || isNegotiating) && (
+                        <div className="mt-3 grid grid-cols-3 gap-2">
+                          <button
+                            onClick={() => handleAcceptBooking(b.id)}
+                            className="rounded-2xl bg-[#1B4332] py-3 text-[13px] font-extrabold text-white transition hover:bg-[#2D6A4F]"
+                          >
+                            Accept
+                          </button>
+                          <button
+                            onClick={() => handleCounterBooking(b.id, lockedPrice)}
+                            className="rounded-2xl bg-[#FEF6EC] py-3 text-[13px] font-extrabold text-[#c65a3a] ring-1 ring-[#E76F51]/30"
+                          >
+                            Counter
+                          </button>
+                          <button
+                            onClick={() => handleDeclineBooking(b.id)}
+                            className="rounded-2xl py-3 text-[13px] font-extrabold text-[#8a8a8a] ring-1 ring-[#1B4332]/12"
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      )}
+                      {isActive && (
+                        <div className="mt-3 flex items-center gap-2">
+                          <span className="rounded-full bg-[#EFFAF1] px-3 py-1.5 text-[11.5px] font-extrabold text-[#1B4332]">
+                            ✓ {b.booking_status.replace(/_/g, ' ')}
+                          </span>
+                          <button
+                            onClick={() => go('worker-jobs')}
+                            className="rounded-full bg-[#FAF9F6] px-3 py-1.5 text-[11.5px] font-extrabold text-[#4A4A4A] ring-1 ring-[#1B4332]/12"
+                          >
+                            Manage →
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -344,6 +477,7 @@ export function WorkerOnboarding({ go }: { go: (p: Page) => void }) {
 
 /* ================= JOBS ================= */
 export function WorkerJobs({ go }: { go: (p: Page, w?: string) => void }) {
+  const { user } = useAuth();
   const [tab, setTab] = useState<"active" | "past">("active");
   const [jobStage, setJobStage] = useState(1);
   const [showProof, setShowProof] = useState(false);
@@ -355,6 +489,21 @@ export function WorkerJobs({ go }: { go: (p: Page, w?: string) => void }) {
   const [quickInput, setQuickInput] = useState("");
   const [callActive, setCallActive] = useState(false);
   const [toast, setToast] = useState("");
+
+  // Completed jobs from DB
+  const [completedJobs, setCompletedJobs] = useState<DbBooking[]>([]);
+  const [completedLoading, setCompletedLoading] = useState(false);
+
+  useEffect(() => {
+    if (tab !== 'past' || !user?.id) return;
+    setCompletedLoading(true);
+    fetchWorkerBookings(user.id).then(res => {
+      setCompletedLoading(false);
+      if (!res.error) {
+        setCompletedJobs(res.data.filter(b => b.booking_status === 'completed'));
+      }
+    });
+  }, [tab, user?.id]);
 
   const sendMsg = (textToSend?: string) => {
     const t = textToSend || quickInput;
@@ -427,18 +576,34 @@ export function WorkerJobs({ go }: { go: (p: Page, w?: string) => void }) {
           </aside>
         </div>
       ) : (
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {[
-            { n: "Sunil K.", j: "Tank check", p: 550, r: 5, t: "Today, 9 AM" },
-            { n: "Rekha D.", j: "Pipe fitting", p: 720, r: 5, t: "Yesterday" },
-            { n: "Manoj T.", j: "Leak repair", p: 400, r: 4, t: "2 days ago" },
-          ].map((j, i) => (
-            <div key={i} className="rounded-[20px] bg-white p-4 ring-1 ring-[#1B4332]/10 card-shadow">
-              <div className="flex items-center justify-between"><p className="text-[14px] font-extrabold">{j.n}</p><span className="rounded-full bg-[#EFFAF1] px-2.5 py-1 text-[12px] font-extrabold text-[#1B4332]">₹{j.p} ✓ paid</span></div>
-              <p className="text-[12.5px] font-semibold text-[#4A4A4A]">{j.j} • {j.t}</p>
-              <p className="mt-1.5"><Stars rating={j.r} /></p>
+        <div className="mt-4">
+          {completedLoading ? (
+            <div className="flex items-center justify-center gap-2 py-10 text-[13px] font-semibold text-[#4A4A4A]">
+              <Loader2 className="h-5 w-5 animate-spin text-[#2D6A4F]" /> Loading completed jobs…
             </div>
-          ))}
+          ) : completedJobs.length === 0 ? (
+            <div className="rounded-[20px] border-2 border-dashed border-[#1B4332]/15 bg-white/60 p-10 text-center">
+              <p className="text-[15px] font-extrabold">No completed jobs yet</p>
+              <p className="mt-1 text-[13px] font-medium text-[#4A4A4A]">Completed bookings will appear here after you finish jobs.</p>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {completedJobs.map((b) => (
+                <div key={b.id} className="rounded-[20px] bg-white p-4 ring-1 ring-[#1B4332]/10 card-shadow">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[14px] font-extrabold">{b.customer?.full_name || 'Customer'}</p>
+                    <span className="rounded-full bg-[#EFFAF1] px-2.5 py-1 text-[12px] font-extrabold text-[#1B4332]">
+                      ₹{Number(b.total_amount)} ✓ done
+                    </span>
+                  </div>
+                  <p className="text-[12.5px] font-semibold text-[#4A4A4A]">
+                    {b.job_title} • {new Date(b.updated_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                  </p>
+                  <p className="mt-1 text-[11.5px] font-bold text-[#8a8a8a]">{b.booking_number}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
