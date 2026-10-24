@@ -1,0 +1,533 @@
+import { useMemo, useState } from "react";
+import {
+  BadgeCheck, Camera, CheckCircle2, ChevronLeft, ChevronRight, Clock,
+  List, Map as MapIcon, MapPin, MessageCircle, Navigation, Phone, Search,
+  ShieldCheck, SlidersHorizontal, Star, X, Zap, Heart,
+} from "lucide-react";
+import { services, workers } from "../data";
+import type { Worker } from "../data";
+import { CustomerBottomNav, ServiceIcon, Stars, TrustRing, VoiceButton, EmptyState, SkeletonCard } from "../components/shared";
+import type { Page } from "../components/shared";
+
+/* ================= CUSTOMER HOME ================= */
+export function CustomerHome({
+  go, lang, location, selectedService, setSelectedService, selectedWorker, setSelectedWorker,
+}: {
+  go: (p: Page, wid?: string) => void; lang: "en" | "hi"; location: string;
+  selectedService: string; setSelectedService: (s: string) => void;
+  selectedWorker: string; setSelectedWorker: (s: string) => void;
+}) {
+  const [q, setQ] = useState("");
+  const [listening, setListening] = useState(false);
+  const [voiceText, setVoiceText] = useState("");
+  const [filter, setFilter] = useState("All");
+  const [loading] = useState(false);
+  const [liked, setLiked] = useState<string[]>([]);
+
+  const nearby = useMemo(() => {
+    let list = [...workers];
+    if (selectedService !== "All") list = list.filter((w) => w.serviceId === selectedService);
+    if (filter === "Available now") list = list.filter((w) => w.availableNow);
+    if (filter === "Top rated") list = list.filter((w) => w.rating >= 4.8);
+    if (filter === "Nearest") list = list.sort((a, b) => a.distanceKm - b.distanceKm);
+    if (filter === "Budget") list = list.filter((w) => w.price < 350);
+    if (q) list = list.filter((w) => (w.name + w.service + w.skills.join(" ")).toLowerCase().includes(q.toLowerCase()));
+    return list;
+  }, [selectedService, filter, q]);
+
+  const startVoice = () => {
+    setListening(true); setVoiceText("");
+    setTimeout(() => setVoiceText(lang === "hi" ? "“मुझे नल ठीक करने वाला चाहिए…”" : "“I need someone to fix a leaking tap…”"), 700);
+    setTimeout(() => { setListening(false); setQ("plumb"); setSelectedService("plumbing"); }, 2400);
+  };
+
+  return (
+    <div className="page-enter mx-auto max-w-6xl px-4 pb-28 pt-5 sm:px-6 md:pb-16">
+      {/* greeting + search */}
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="flex items-center gap-1.5 text-[12.5px] font-bold text-[#4A4A4A]"><MapPin className="h-3.5 w-3.5 text-[#E76F51]" /> {location}</p>
+          <h1 className="font-display mt-1 text-[24px] font-black tracking-tight sm:text-[30px]">
+            {lang === "hi" ? "नमस्ते, प्रिया 🙏" : "Namaste, Priya 🙏"}
+          </h1>
+        </div>
+        <button onClick={() => go("tracking")} className="relative grid h-11 w-11 place-items-center rounded-full bg-white ring-1 ring-[#1B4332]/10">
+          <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-[#E76F51]" />
+          <Clock className="h-5 w-5 text-[#1B4332]" />
+        </button>
+      </div>
+
+      <div className="mt-4 flex gap-2">
+        <label className="flex flex-1 items-center gap-2.5 rounded-[18px] bg-white px-4 py-1 ring-1 ring-[#1B4332]/12 card-shadow focus-within:ring-[#2D6A4F]">
+          <Search className="h-5 w-5 shrink-0 text-[#1B4332]" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={lang === "hi" ? "खोजें: प्लंबर, सफ़ाई, कुक…" : "Search: plumber, cleaning, cook…"}
+            className="h-12 w-full bg-transparent text-[14.5px] font-semibold outline-none placeholder:text-[#8a8a8a]" />
+          {q && <button onClick={() => setQ("")} aria-label="Clear"><X className="h-4 w-4 text-[#8a8a8a]" /></button>}
+        </label>
+        <VoiceButton onClick={startVoice} listening={listening} />
+      </div>
+      {(listening || voiceText) && (
+        <div className="animate-fade-in mt-2.5 rounded-[16px] bg-[#122b21] px-4 py-3 text-[13px] font-bold text-white">
+          {listening ? <span className="flex items-center gap-2"><span className="flex gap-1">{[0, 1, 2, 3].map((i) => <span key={i} className="h-4 w-1 animate-pulse rounded-full bg-[#52B788]" style={{ animationDelay: `${i * 150}ms` }} />)}</span> {voiceText || (lang === "hi" ? "सुन रहे हैं… बोलिए" : "Listening… speak now")}</span>
+            : <span className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-[#52B788]" /> {lang === "hi" ? "समझ गए! प्लंबिंग कारीगर दिखा रहे हैं ✓" : "Got it! Showing plumbing workers ✓"}</span>}
+        </div>
+      )}
+
+      {/* quick filters */}
+      <div className="no-scrollbar -mx-4 mt-4 flex gap-2 overflow-x-auto px-4 pb-1">
+        {[
+          { en: "ASAP", hi: "तुरंत", icon: Zap },
+          { en: "Schedule", hi: "शेड्यूल", icon: Clock },
+          { en: "Available now", hi: "अभी उपलब्ध", icon: null },
+          { en: "Top rated", hi: "टॉप रेटेड", icon: null },
+          { en: "Nearest", hi: "नज़दीकी", icon: null },
+          { en: "Budget", hi: "बजट", icon: null },
+        ].map((f) => (
+          <button key={f.en} onClick={() => setFilter(filter === f.en ? "All" : f.en)}
+            className={`flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2.5 text-[12.5px] font-extrabold ring-1 transition active:scale-95 ${filter === f.en ? "bg-[#1B4332] text-white ring-[#1B4332]" : "bg-white text-[#1A1A1A] ring-[#1B4332]/12"}`}>
+            {f.icon && <f.icon className="h-3.5 w-3.5" />}{lang === "hi" ? f.hi : f.en}
+          </button>
+        ))}
+      </div>
+
+      {/* categories */}
+      <div className="mt-6 flex items-center justify-between">
+        <h2 className="text-[16px] font-extrabold">{lang === "hi" ? "सेवा चुनें" : "Choose a service"}</h2>
+        <button onClick={() => go("workers")} className="text-[12.5px] font-bold text-[#2D6A4F]">See all →</button>
+      </div>
+      <div className="no-scrollbar -mx-4 mt-3 flex gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:grid sm:grid-cols-4 sm:px-0 lg:grid-cols-8">
+        <button onClick={() => setSelectedService("All")}
+          className={`flex w-[86px] shrink-0 flex-col items-center gap-2 rounded-[18px] p-3.5 ring-1 transition active:scale-95 sm:w-auto ${selectedService === "All" ? "bg-[#1B4332] text-white ring-[#1B4332]" : "bg-white ring-[#1B4332]/10"}`}>
+          <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#E76F51]/15 text-[#E76F51] text-lg font-black">✦</span>
+          <span className="text-[11.5px] font-extrabold">{lang === "hi" ? "सभी" : "All"}</span>
+        </button>
+        {services.map((s) => (
+          <button key={s.id} onClick={() => { setSelectedService(s.id); }}
+            className={`flex w-[86px] shrink-0 flex-col items-center gap-2 rounded-[18px] p-3.5 ring-1 transition active:scale-95 sm:w-auto ${selectedService === s.id ? "bg-[#1B4332] text-white ring-[#1B4332]" : "bg-white ring-[#1B4332]/10 hover:ring-[#2D6A4F]/40"}`}>
+            <span className={`grid h-11 w-11 place-items-center rounded-2xl ${selectedService === s.id ? "bg-white/15 text-white" : "bg-[#1B4332]/8 text-[#1B4332]"}`}>
+              <ServiceIcon icon={s.icon} className="h-5 w-5" />
+            </span>
+            <span className="text-center text-[11.5px] font-extrabold leading-tight">{lang === "hi" ? s.hi : s.en}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* available now strip */}
+      <div className="mt-6 overflow-hidden rounded-[20px] bg-gradient-to-r from-[#1B4332] to-[#2D6A4F] p-5 text-white sm:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="flex items-center gap-2 text-[13px] font-extrabold text-[#52B788]"><span className="relative flex h-2.5 w-2.5"><span className="absolute h-full w-full animate-ping rounded-full bg-[#52B788]" /><span className="h-2.5 w-2.5 rounded-full bg-[#52B788]" /></span> WORKER FIRST • {workers.filter((w) => w.availableNow).length} ONLINE NEAR YOU</p>
+            <h3 className="font-display mt-1.5 text-[22px] font-black sm:text-[26px]">{lang === "hi" ? "अभी उपलब्ध — तुरंत बुक करें" : "Available now — book instantly"}</h3>
+          </div>
+          <button onClick={() => { setFilter("Available now"); }} className="rounded-full bg-white px-5 py-2.5 text-[13px] font-extrabold text-[#1B4332] transition hover:bg-[#F4A261] hover:text-white">Show now →</button>
+        </div>
+        <div className="no-scrollbar -mx-5 mt-4 flex gap-3 overflow-x-auto px-5 pb-1 sm:mx-0 sm:px-0">
+          {workers.filter((w) => w.availableNow).slice(0, 5).map((w) => (
+            <button key={w.id} onClick={() => { setSelectedWorker(w.id); go("worker-profile", w.id); }}
+              className="flex shrink-0 items-center gap-2.5 rounded-2xl bg-white/10 p-2 pr-4 ring-1 ring-white/15 backdrop-blur transition hover:bg-white/20">
+              <img src={w.photo} alt={w.name} className="h-11 w-11 rounded-xl object-cover" />
+              <span className="text-left"><span className="block text-[12.5px] font-extrabold">{w.name.split(" ")[0]} • {w.service}</span>
+                <span className="block text-[11px] font-semibold text-white/70">₹{w.price} • {w.eta} • ◆{w.trustDNA}</span></span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* nearby */}
+      <div className="mt-6 flex items-center justify-between">
+        <h2 className="text-[16px] font-extrabold">{lang === "hi" ? "नज़दीकी कारीगर" : "Nearby workers"} <span className="ml-1 rounded-full bg-[#1B4332]/8 px-2.5 py-1 text-[11px]">{nearby.length}</span></h2>
+        <button onClick={() => go("workers")} className="flex items-center gap-1 text-[12.5px] font-bold text-[#2D6A4F]"><MapIcon className="h-3.5 w-3.5" /> Map view</button>
+      </div>
+      {loading ? (
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{[1, 2, 3].map((i) => <SkeletonCard key={i} />)}</div>
+      ) : nearby.length === 0 ? (
+        <div className="mt-4"><EmptyState title={lang === "hi" ? "कोई कारीगर नहीं मिला" : "No workers found"} sub="Try a different service or clear your search — new workers join daily." action={<button onClick={() => { setQ(""); setSelectedService("All"); setFilter("All"); }} className="rounded-full bg-[#1B4332] px-5 py-2.5 text-[13px] font-bold text-white">Clear filters</button>} /></div>
+      ) : (
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {nearby.slice(0, 6).map((w) => (
+            <WorkerRowCard key={w.id} w={w} go={go} liked={liked.includes(w.id)} onLike={() => setLiked((l) => l.includes(w.id) ? l.filter((x) => x !== w.id) : [...l, w.id])} onSelect={() => { setSelectedWorker(w.id); go("worker-profile", w.id); }} />
+          ))}
+        </div>
+      )}
+
+      <CustomerBottomNav page="customer-home" go={go} onBook={() => go("booking", selectedWorker || "ramesh")} />
+    </div>
+  );
+}
+
+export function WorkerRowCard({ w, go, liked, onLike, onSelect }: { w: Worker; go: (p: Page, w?: string) => void; liked: boolean; onLike: () => void; onSelect: () => void }) {
+  return (
+    <div className="flex gap-3.5 rounded-[18px] bg-white p-3.5 ring-1 ring-[#1B4332]/10 card-shadow transition hover:ring-[#2D6A4F]/40">
+      <button onClick={onSelect} className="relative shrink-0">
+        <img src={w.photo} alt={w.name} className="h-[86px] w-[86px] rounded-2xl object-cover" loading="lazy" />
+        {w.availableNow && <span className="absolute -bottom-1.5 left-1/2 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full bg-[#1B4332] px-2 py-0.5 text-[9.5px] font-extrabold text-white"><span className="h-1.5 w-1.5 rounded-full bg-[#52B788]" />NOW</span>}
+      </button>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-2">
+          <button onClick={onSelect} className="min-w-0 text-left">
+            <p className="flex items-center gap-1 truncate text-[14.5px] font-extrabold">{w.name} {w.verified && <BadgeCheck className="h-4 w-4 shrink-0 fill-[#52B788] text-white" />}</p>
+            <p className="truncate text-[12px] font-semibold text-[#4A4A4A]">{w.service} • {w.distance} • {w.eta}</p>
+          </button>
+          <button onClick={onLike} aria-label="Save" className={`grid h-8 w-8 shrink-0 place-items-center rounded-full transition active:scale-90 ${liked ? "bg-[#E76F51]/12 text-[#E76F51]" : "bg-[#FAF9F6] text-[#8a8a8a]"}`}>
+            <Heart className={`h-4 w-4 ${liked ? "fill-[#E76F51]" : ""}`} />
+          </button>
+        </div>
+        <div className="mt-1.5 flex items-center justify-between">
+          <span className="flex items-center gap-1 text-[12px] font-bold"><Star className="h-3.5 w-3.5 fill-[#F4A261] text-[#F4A261]" />{w.rating} <span className="font-semibold text-[#8a8a8a]">({w.jobs})</span> <span className="ml-1 rounded-full bg-[#EFFAF1] px-2 py-0.5 text-[10.5px] font-extrabold text-[#1B4332]">◆ {w.trustDNA}</span></span>
+          <span className="text-[15px] font-extrabold text-[#1B4332]">₹{w.price}<span className="text-[10.5px] font-bold text-[#8a8a8a]">+</span></span>
+        </div>
+        <button onClick={() => go("booking", w.id)} className="mt-2 w-full rounded-xl bg-[#1B4332] py-2 text-[12.5px] font-extrabold text-white transition hover:bg-[#2D6A4F] active:scale-[0.98]">Negotiate & Book →</button>
+      </div>
+    </div>
+  );
+}
+
+/* ================= WORKER LISTING ================= */
+export function WorkerListing({
+  go, lang, selectedService, setSelectedService, setSelectedWorker,
+}: {
+  go: (p: Page, wid?: string) => void; lang: "en" | "hi"; selectedService: string; setSelectedService: (s: string) => void; setSelectedWorker: (s: string) => void;
+}) {
+  const [view, setView] = useState<"list" | "map">("list");
+  const [sort, setSort] = useState("Recommended");
+  const [maxPrice, setMaxPrice] = useState(900);
+  const [onlyNow, setOnlyNow] = useState(false);
+  const [minTrust, setMinTrust] = useState(0);
+  const [showFilters, setShowFilters] = useState(false);
+
+  const list = useMemo(() => {
+    let l = [...workers];
+    if (selectedService !== "All") l = l.filter((w) => w.serviceId === selectedService);
+    l = l.filter((w) => w.price <= maxPrice && w.trustDNA >= minTrust);
+    if (onlyNow) l = l.filter((w) => w.availableNow);
+    if (sort === "Price: low to high") l.sort((a, b) => a.price - b.price);
+    if (sort === "Highest rated") l.sort((a, b) => b.rating - a.rating);
+    if (sort === "Nearest") l.sort((a, b) => a.distanceKm - b.distanceKm);
+    if (sort === "TrustDNA") l.sort((a, b) => b.trustDNA - a.trustDNA);
+    return l;
+  }, [selectedService, sort, maxPrice, onlyNow, minTrust]);
+
+  return (
+    <div className="page-enter mx-auto max-w-6xl px-4 pb-28 pt-5 sm:px-6 md:pb-16">
+      <button onClick={() => go("customer-home")} className="flex items-center gap-1.5 text-[13px] font-bold text-[#4A4A4A] hover:text-[#1B4332]"><ChevronLeft className="h-4 w-4" /> Back</button>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="font-display text-[24px] font-black tracking-tight sm:text-[30px]">{selectedService === "All" ? (lang === "hi" ? "सभी कारीगर" : "All workers") : services.find((s) => s.id === selectedService)?.[lang]} <span className="text-[#8a8a8a] text-[16px] font-bold">({list.length})</span></h1>
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-full bg-white p-1 ring-1 ring-[#1B4332]/12">
+            <button onClick={() => setView("list")} className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-[12.5px] font-extrabold transition ${view === "list" ? "bg-[#1B4332] text-white" : "text-[#4A4A4A]"}`}><List className="h-4 w-4" /> List</button>
+            <button onClick={() => setView("map")} className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-[12.5px] font-extrabold transition ${view === "map" ? "bg-[#1B4332] text-white" : "text-[#4A4A4A]"}`}><MapIcon className="h-4 w-4" /> Map</button>
+          </div>
+          <button onClick={() => setShowFilters(!showFilters)} className="flex items-center gap-1.5 rounded-full bg-[#E76F51] px-4 py-2.5 text-[12.5px] font-extrabold text-white transition hover:bg-[#c65a3a]">
+            <SlidersHorizontal className="h-4 w-4" /> Filters {(onlyNow || minTrust > 0 || maxPrice < 900) && <span className="grid h-5 w-5 place-items-center rounded-full bg-white text-[10px] text-[#E76F51]">!</span>}
+          </button>
+        </div>
+      </div>
+
+      {/* service pills */}
+      <div className="no-scrollbar -mx-4 mt-4 flex gap-2 overflow-x-auto px-4 pb-1">
+        {[{ id: "All", en: "All" }, ...services].map((s) => (
+          <button key={s.id} onClick={() => setSelectedService(s.id)}
+            className={`shrink-0 rounded-full px-4 py-2 text-[12.5px] font-extrabold ring-1 transition active:scale-95 ${selectedService === s.id ? "bg-[#1B4332] text-white ring-[#1B4332]" : "bg-white ring-[#1B4332]/12"}`}>{s.en}</button>
+        ))}
+      </div>
+
+      {/* filters */}
+      {showFilters && (
+        <div className="animate-slide-up mt-3 grid gap-4 rounded-[20px] bg-white p-5 ring-1 ring-[#1B4332]/12 card-shadow sm:grid-cols-4">
+          <div>
+            <p className="text-[12px] font-extrabold uppercase tracking-wide text-[#4A4A4A]">Sort by</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {["Recommended", "Nearest", "Highest rated", "Price: low to high", "TrustDNA"].map((o) => (
+                <button key={o} onClick={() => setSort(o)} className={`rounded-full px-3 py-1.5 text-[12px] font-bold ring-1 ${sort === o ? "bg-[#1B4332] text-white ring-[#1B4332]" : "bg-[#FAF9F6] ring-[#1B4332]/12"}`}>{o}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-[12px] font-extrabold uppercase tracking-wide text-[#4A4A4A]">Max starting price: <span className="text-[#E76F51]">₹{maxPrice}</span></p>
+            <input type="range" min={150} max={900} step={50} value={maxPrice} onChange={(e) => setMaxPrice(+e.target.value)} className="mt-3 w-full accent-[#1B4332]" />
+          </div>
+          <div>
+            <p className="text-[12px] font-extrabold uppercase tracking-wide text-[#4A4A4A]">Min TrustDNA: <span className="text-[#1B4332]">{minTrust || "Any"}</span></p>
+            <div className="mt-2 flex gap-1.5">{[0, 85, 90, 93].map((v) => <button key={v} onClick={() => setMinTrust(v)} className={`rounded-full px-3 py-1.5 text-[12px] font-bold ring-1 ${minTrust === v ? "bg-[#1B4332] text-white" : "bg-[#FAF9F6] ring-[#1B4332]/12"}`}>{v === 0 ? "Any" : `${v}+`}</button>)}</div>
+          </div>
+          <div className="flex items-end">
+            <button onClick={() => setOnlyNow(!onlyNow)} className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-[13px] font-extrabold ring-1 transition ${onlyNow ? "bg-[#EFFAF1] text-[#1B4332] ring-[#2D6A4F]" : "bg-[#FAF9F6] ring-[#1B4332]/12"}`}>
+              Available now only <span className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${onlyNow ? "bg-[#2D6A4F]" : "bg-[#d8cfbe]"}`}><span className={`h-5 w-5 rounded-full bg-white shadow transition ${onlyNow ? "translate-x-5" : "translate-x-0.5"}`} /></span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {view === "map" ? (
+        <div className="animate-fade-in mt-4 overflow-hidden rounded-[20px] ring-1 ring-[#1B4332]/12 card-shadow">
+          {/* stylized map */}
+          <div className="dot-grid relative h-[380px] bg-[#EDE8DA] sm:h-[440px]">
+            <svg className="absolute inset-0 h-full w-full" preserveAspectRatio="none" viewBox="0 0 800 400">
+              <path d="M-20,120 C150,100 220,200 400,170 C580,140 640,220 820,190" stroke="#fff" strokeWidth="26" fill="none" strokeLinecap="round" />
+              <path d="M-20,260 C180,250 300,300 500,270 C650,250 720,290 820,270" stroke="#fff" strokeWidth="18" fill="none" strokeLinecap="round" />
+              <path d="M200,-20 C220,120 180,260 230,420" stroke="#fff" strokeWidth="20" fill="none" />
+              <path d="M560,-20 C540,140 600,260 570,420" stroke="#fff" strokeWidth="14" fill="none" />
+              <circle cx="400" cy="200" r="90" fill="#2D6A4F" opacity="0.12" />
+              <circle cx="400" cy="200" r="55" fill="#2D6A4F" opacity="0.12" />
+            </svg>
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+              <div className="grid h-12 w-12 place-items-center rounded-full bg-[#1B4332] text-white ring-4 ring-white card-shadow-lg"><Navigation className="h-5 w-5" /></div>
+              <p className="mt-1 whitespace-nowrap rounded-full bg-[#122b21] px-3 py-1 text-center text-[10.5px] font-extrabold text-white">You • Laxmi Nagar</p>
+            </div>
+            {list.slice(0, 5).map((w, i) => {
+              const pos = [{ l: "18%", t: "22%" }, { l: "68%", t: "18%" }, { l: "74%", t: "62%" }, { l: "24%", t: "66%" }, { l: "48%", t: "30%" }][i];
+              return (
+                <button key={w.id} onClick={() => { setSelectedWorker(w.id); go("worker-profile", w.id); }}
+                  className="absolute -translate-x-1/2 -translate-y-1/2 transition hover:z-10 hover:scale-110" style={{ left: pos.l, top: pos.t }}>
+                  <div className="flex items-center gap-1.5 rounded-full bg-white py-1 pl-1 pr-3 ring-2 ring-[#2D6A4F] card-shadow-lg">
+                    <img src={w.photo} alt={w.name} className="h-8 w-8 rounded-full object-cover" />
+                    <span className="text-left leading-none"><span className="block text-[11px] font-extrabold">₹{w.price}</span><span className="block text-[9px] font-bold text-[#4A4A4A]">{w.eta}</span></span>
+                  </div>
+                </button>
+              );
+            })}
+            <div className="absolute bottom-3 left-3 rounded-2xl bg-white/95 px-3.5 py-2.5 text-[11.5px] font-bold text-[#1A1A1A] backdrop-blur card-shadow">
+              🗺️ {list.length} workers within 3 km • Tap a pin to view profile
+            </div>
+          </div>
+          <div className="no-scrollbar flex gap-3 overflow-x-auto bg-white p-3">
+            {list.map((w) => (
+              <button key={w.id} onClick={() => { setSelectedWorker(w.id); go("worker-profile", w.id); }} className="flex w-[240px] shrink-0 items-center gap-2.5 rounded-2xl bg-[#FAF9F6] p-2.5 text-left ring-1 ring-[#1B4332]/10 hover:ring-[#2D6A4F]">
+                <img src={w.photo} alt={w.name} className="h-12 w-12 rounded-xl object-cover" />
+                <span><span className="block text-[13px] font-extrabold">{w.name}</span><span className="block text-[11.5px] font-semibold text-[#4A4A4A]">◆{w.trustDNA} • {w.distance} • ₹{w.price}</span></span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_340px]">
+          <div className="grid content-start gap-4 sm:grid-cols-2">
+            {list.length === 0 ? (
+              <div className="sm:col-span-2"><EmptyState title="No matches for these filters" sub="Loosen the price or TrustDNA filter to see more verified workers nearby." action={<button onClick={() => { setMaxPrice(900); setMinTrust(0); setOnlyNow(false); }} className="rounded-full bg-[#1B4332] px-5 py-2.5 text-[13px] font-bold text-white">Reset filters</button>} /></div>
+            ) : list.map((w) => (
+              <WorkerDetailCard key={w.id} w={w} onProfile={() => { setSelectedWorker(w.id); go("worker-profile", w.id); }} onBook={() => go("booking", w.id)} />
+            ))}
+          </div>
+          {/* explainer sidebar */}
+          <aside className="hidden h-fit rounded-[20px] bg-[#1B4332] p-6 text-white lg:block">
+            <p className="flex items-center gap-2 text-[12px] font-extrabold uppercase tracking-widest text-[#52B788]"><ShieldCheck className="h-4 w-4" /> What is TrustDNA?</p>
+            <div className="mt-4 flex justify-center"><TrustRing score={92} size={120} stroke={11} dark /></div>
+            <ul className="mt-4 space-y-2.5 text-[13px] font-semibold text-white/80">
+              <li className="flex gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-[#52B788]" /> Identity & address verified with Aadhaar</li>
+              <li className="flex gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-[#52B788]" /> Real completed jobs counted live</li>
+              <li className="flex gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-[#52B788]" /> Ratings only from paying customers</li>
+              <li className="flex gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-[#52B788]" /> Response speed tracked honestly</li>
+            </ul>
+            <button onClick={() => go("impact")} className="mt-5 w-full rounded-full bg-white py-3 text-[13px] font-extrabold text-[#1B4332]">How we keep you safe →</button>
+          </aside>
+        </div>
+      )}
+      <CustomerBottomNav page="workers" go={go} onBook={() => go("booking", "ramesh")} />
+    </div>
+  );
+}
+
+function WorkerDetailCard({ w, onProfile, onBook }: { w: Worker; onProfile: () => void; onBook: () => void }) {
+  return (
+    <div className="overflow-hidden rounded-[20px] bg-white ring-1 ring-[#1B4332]/10 card-shadow transition hover:card-shadow-lg">
+      <button onClick={onProfile} className="flex w-full gap-3.5 p-4 text-left">
+        <div className="relative shrink-0">
+          <img src={w.photo} alt={w.name} className="h-20 w-20 rounded-2xl object-cover" loading="lazy" />
+          {w.availableNow && <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#2D6A4F] px-2 py-0.5 text-[9px] font-extrabold text-white">● NOW</span>}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="flex items-center gap-1 text-[15px] font-extrabold">{w.name} {w.verified && <BadgeCheck className="h-4 w-4 fill-[#52B788] text-white" />}</p>
+          <p className="mt-0.5 flex flex-wrap gap-1">{w.skills.slice(0, 3).map((s) => <span key={s} className="rounded-full bg-[#FAF9F6] px-2 py-0.5 text-[10.5px] font-bold text-[#4A4A4A] ring-1 ring-[#1B4332]/10">{s}</span>)}</p>
+          <p className="mt-1.5 flex items-center gap-2 text-[12px] font-bold text-[#4A4A4A]"><span className="flex items-center gap-1 text-[#1A1A1A]"><Star className="h-3.5 w-3.5 fill-[#F4A261] text-[#F4A261]" />{w.rating} ({w.jobs})</span> • {w.distance} • {w.eta}</p>
+        </div>
+        <TrustRing score={w.trustDNA} size={56} stroke={6} />
+      </button>
+      <div className="flex items-center justify-between gap-2 border-t border-[#1B4332]/8 bg-[#FAF9F6]/60 px-4 py-3">
+        <p className="text-[13px] font-bold text-[#4A4A4A]">Starts <span className="text-[17px] font-extrabold text-[#1B4332]">₹{w.price}</span></p>
+        <div className="flex gap-2">
+          <button onClick={onProfile} className="rounded-full px-4 py-2 text-[12.5px] font-extrabold text-[#1B4332] ring-1 ring-[#1B4332]/25 transition hover:bg-[#1B4332]/5">Profile</button>
+          <button onClick={onBook} className="rounded-full bg-[#E76F51] px-4 py-2 text-[12.5px] font-extrabold text-white transition hover:bg-[#c65a3a]">Book →</button>
+        </div>
+      </div>
+      <div className="flex items-center gap-1.5 bg-[#EFFAF1] px-4 py-2 text-[11px] font-bold text-[#1B4332]">
+        <ShieldCheck className="h-3.5 w-3.5" /> Identity verified · {w.jobs} jobs · {w.rating} rating · ~{w.responseMins} min response
+        <button onClick={onProfile} className="ml-auto underline">why?</button>
+      </div>
+    </div>
+  );
+}
+
+/* ================= WORKER PROFILE ================= */
+export function WorkerProfile({
+  go, lang, workerId, setSelectedWorker,
+}: {
+  go: (p: Page, wid?: string) => void; lang: "en" | "hi"; workerId: string; setSelectedWorker: (s: string) => void;
+}) {
+  const w = workers.find((x) => x.id === workerId) ?? workers[0];
+  const [tab, setTab] = useState<"about" | "reviews" | "rates">("about");
+  const [showDNA, setShowDNA] = useState(true);
+  const others = workers.filter((x) => x.id !== w.id && x.serviceId === w.serviceId).concat(workers.filter((x) => x.id !== w.id && x.serviceId !== w.serviceId)).slice(0, 3);
+
+  return (
+    <div className="page-enter mx-auto max-w-6xl px-4 pb-32 pt-5 sm:px-6 md:pb-16">
+      <div className="flex items-center justify-between">
+        <button onClick={() => go("workers")} className="flex items-center gap-1.5 rounded-full bg-white px-3.5 py-2 text-[13px] font-bold ring-1 ring-[#1B4332]/12"><ChevronLeft className="h-4 w-4" /> {lang === "hi" ? "वापस" : "Back"}</button>
+        <span className="flex items-center gap-1.5 text-[12px] font-bold text-[#4A4A4A]"><MapPin className="h-3.5 w-3.5 text-[#E76F51]" /> {w.distance} away • {w.area}</span>
+      </div>
+
+      <div className="mt-4 grid gap-5 lg:grid-cols-[1fr_380px]">
+        <div>
+          {/* hero card */}
+          <div className="overflow-hidden rounded-[22px] bg-white ring-1 ring-[#1B4332]/10 card-shadow">
+            <div className="relative">
+              <img src={w.photo} alt={w.name} className="h-64 w-full object-cover sm:h-80" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+              <div className="absolute left-4 top-4 flex gap-2">
+                {w.availableNow ? (
+                  <span className="flex items-center gap-1.5 rounded-full bg-[#2D6A4F] px-3.5 py-1.5 text-[12px] font-extrabold text-white"><span className="h-2 w-2 animate-pulse rounded-full bg-white" /> {lang === "hi" ? "अभी उपलब्ध" : "Available now"}</span>
+                ) : (
+                  <span className="flex items-center gap-1.5 rounded-full bg-white/90 px-3.5 py-1.5 text-[12px] font-extrabold text-[#4A4A4A]"><Clock className="h-3.5 w-3.5" /> Busy • back ~2h</span>
+                )}
+              </div>
+              <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between gap-3">
+                <div className="text-white">
+                  <h1 className="flex items-center gap-2 text-[24px] font-extrabold sm:text-[28px]">{w.name} {w.verified && <BadgeCheck className="h-6 w-6 fill-[#52B788] text-white" />}</h1>
+                  <p className="text-[13.5px] font-semibold text-white/85">{w.service} • {lang === "hi" ? w.hindiName : w.languages.join(" • ")} • {w.eta} arrival</p>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 p-4 sm:p-5">
+              <TrustRing score={w.trustDNA} size={76} stroke={8} />
+              <div className="min-w-0 flex-1">
+                <p className="flex items-center gap-2 text-[15px] font-extrabold"><Stars rating={w.rating} /> {w.rating} <span className="font-semibold text-[#4A4A4A]">• {w.jobs} jobs done</span></p>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">{w.skills.map((s) => <span key={s} className="rounded-full bg-[#FAF9F6] px-2.5 py-1 text-[11px] font-bold ring-1 ring-[#1B4332]/10">{s}</span>)}</div>
+              </div>
+              <div className="text-right"><p className="text-[11px] font-bold uppercase tracking-wide text-[#8a8a8a]">Starts at</p><p className="text-[26px] font-extrabold text-[#1B4332]">₹{w.price}</p></div>
+            </div>
+            {/* TrustDNA breakdown */}
+            <div className="border-t border-[#1B4332]/10 bg-[#EFFAF1]/60 px-4 py-4 sm:px-5">
+              <button onClick={() => setShowDNA(!showDNA)} className="flex w-full items-center justify-between text-left">
+                <span className="flex items-center gap-2 text-[14px] font-extrabold text-[#1B4332]"><ShieldCheck className="h-5 w-5" /> TrustDNA {w.trustDNA}/100 — {lang === "hi" ? "क्यों भरोसा करें?" : "why trust this score?"}</span>
+                <ChevronRight className={`h-5 w-5 text-[#1B4332] transition ${showDNA ? "rotate-90" : ""}`} />
+              </button>
+              {showDNA && (
+                <div className="animate-slide-up mt-3 grid gap-2 sm:grid-cols-2">
+                  {w.breakdown.map((b) => (
+                    <div key={b.label} className="flex items-center gap-2.5 rounded-2xl bg-white px-3.5 py-3 ring-1 ring-[#2D6A4F]/15">
+                      <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${b.done ? "bg-[#2D6A4F] text-white" : "bg-[#F4A261]/20 text-[#E76F51]"}`}>
+                        {b.done ? <CheckCircle2 className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
+                      </span>
+                      <span><span className="block text-[12.5px] font-extrabold">{b.label}</span><span className="block text-[11px] font-bold text-[#2D6A4F]">{b.value}</span></span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* tabs */}
+          <div className="mt-4 flex rounded-full bg-white p-1 ring-1 ring-[#1B4332]/12">
+            {(["about", "reviews", "rates"] as const).map((t) => (
+              <button key={t} onClick={() => setTab(t)} className={`flex-1 rounded-full py-2.5 text-[13px] font-extrabold capitalize transition ${tab === t ? "bg-[#1B4332] text-white" : "text-[#4A4A4A]"}`}>{t}</button>
+            ))}
+          </div>
+          <div className="animate-fade-in mt-4 rounded-[20px] bg-white p-5 ring-1 ring-[#1B4332]/10 card-shadow sm:p-6" key={tab}>
+            {tab === "about" && (
+              <div>
+                <p className="text-[14.5px] font-medium leading-relaxed text-[#1A1A1A]">“{w.about}”</p>
+                <div className="mt-4 grid grid-cols-2 gap-3 text-[13px] font-bold sm:grid-cols-4">
+                  <InfoTile label="Service area" value={w.area} />
+                  <InfoTile label="Languages" value={w.languages.join(", ")} />
+                  <InfoTile label="Responds in" value={`~${w.responseMins} min`} />
+                  <InfoTile label="Repeat clients" value="68%" />
+                </div>
+                <div className="mt-4 flex items-center gap-3 rounded-2xl bg-[#FEF6EC] p-4 ring-1 ring-[#E76F51]/20">
+                  <Camera className="h-8 w-8 shrink-0 text-[#E76F51]" />
+                  <p className="text-[12.5px] font-semibold text-[#4A4A4A]"><span className="font-extrabold text-[#1A1A1A]">Proof of Work promise:</span> before/after photos shared for every job, confirmed by you before payment.</p>
+                </div>
+              </div>
+            )}
+            {tab === "reviews" && (
+              <div className="space-y-3">
+                {[
+                  { n: "Priya S.", t: "Fixed our leak in 40 minutes. Clean work, explained every charge. Highly recommended!", r: 5, d: "2 days ago" },
+                  { n: "Amit V.", t: "Polite, on time, brought own tools. Fair price locked in chat — no haggling at the door.", r: 5, d: "1 week ago" },
+                  { n: "Kavita R.", t: "Good work, took a little longer than ETA but quality was excellent.", r: 4, d: "3 weeks ago" },
+                ].map((r, i) => (
+                  <div key={i} className="rounded-2xl bg-[#FAF9F6] p-4 ring-1 ring-[#1B4332]/8">
+                    <div className="flex items-center justify-between"><p className="text-[13.5px] font-extrabold">{r.n}</p><Stars rating={r.r} /></div>
+                    <p className="mt-1.5 text-[13.5px] font-medium text-[#1A1A1A]">“{r.t}”</p>
+                    <p className="mt-1 text-[11px] font-bold text-[#8a8a8a]">{r.d} • Verified booking ✓</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            {tab === "rates" && (
+              <div className="space-y-2.5">
+                {[
+                  { s: "Visit + inspection", p: `₹${w.price}` },
+                  { s: "Standard repair (1 hr)", p: `₹${w.price + 150}` },
+                  { s: "Deep service (2–3 hrs)", p: `₹${w.price + 450}` },
+                  { s: "Emergency / night visit", p: `₹${w.price + 200}` },
+                ].map((r) => (
+                  <div key={r.s} className="flex items-center justify-between rounded-2xl bg-[#FAF9F6] px-4 py-3.5 ring-1 ring-[#1B4332]/8">
+                    <span className="text-[13.5px] font-bold">{r.s}</span><span className="text-[15px] font-extrabold text-[#1B4332]">{r.p}</span>
+                  </div>
+                ))}
+                <p className="pt-1 text-[12px] font-semibold text-[#4A4A4A]">Final price is negotiated fairly in FairFare chat — these are starting guides, not fixed bills.</p>
+              </div>
+            )}
+          </div>
+
+          {/* similar */}
+          <h3 className="mt-6 text-[15px] font-extrabold">Similar trusted workers</h3>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            {others.map((o) => (
+              <button key={o.id} onClick={() => { setSelectedWorker(o.id); window.scrollTo({ top: 0 }); }} className="flex items-center gap-2.5 rounded-2xl bg-white p-3 text-left ring-1 ring-[#1B4332]/10 hover:ring-[#2D6A4F]/50">
+                <img src={o.photo} alt={o.name} className="h-12 w-12 rounded-xl object-cover" />
+                <span><span className="block text-[13px] font-extrabold">{o.name}</span><span className="block text-[11px] font-semibold text-[#4A4A4A]">◆{o.trustDNA} • ₹{o.price} • {o.distance}</span></span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* sticky book panel */}
+        <aside className="lg:sticky lg:top-24 lg:h-fit">
+          <div className="rounded-[22px] bg-white p-5 ring-1 ring-[#1B4332]/10 card-shadow-lg sm:p-6">
+            <p className="flex items-center justify-between text-[14px] font-extrabold">Booking summary <span className="rounded-full bg-[#EFFAF1] px-2.5 py-1 text-[11px] text-[#1B4332]">No advance needed</span></p>
+            <div className="mt-3 space-y-2 text-[13px] font-semibold text-[#4A4A4A]">
+              <Row k="Arrival" v={w.eta} />
+              <Row k="Starting price" v={`₹${w.price}`} />
+              <Row k="Platform fee" v="₹0 for you" />
+              <Row k="Payment" v="After work • UPI/cash" />
+            </div>
+            <button onClick={() => go("booking", w.id)} className="mt-4 w-full rounded-2xl bg-[#E76F51] py-4 text-[15px] font-extrabold text-white transition hover:bg-[#c65a3a] active:scale-[0.98]">
+              Negotiate & Book →
+            </button>
+            <div className="mt-2.5 grid grid-cols-2 gap-2">
+              <button className="flex items-center justify-center gap-1.5 rounded-2xl py-3 text-[13px] font-extrabold text-[#1B4332] ring-1 ring-[#1B4332]/25 transition hover:bg-[#1B4332]/5"><MessageCircle className="h-4 w-4" /> Chat</button>
+              <button className="flex items-center justify-center gap-1.5 rounded-2xl py-3 text-[13px] font-extrabold text-[#1B4332] ring-1 ring-[#1B4332]/25 transition hover:bg-[#1B4332]/5"><Phone className="h-4 w-4" /> Call</button>
+            </div>
+            <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[11.5px] font-bold text-[#4A4A4A]"><ShieldCheck className="h-3.5 w-3.5 text-[#2D6A4F]" /> Covered by Saharaa Safety Promise</p>
+          </div>
+        </aside>
+      </div>
+
+      {/* mobile sticky CTA */}
+      <div className="fixed inset-x-0 bottom-[72px] z-30 px-4 md:hidden">
+        <button onClick={() => go("booking", w.id)} className="mx-auto flex w-full max-w-md items-center justify-between rounded-2xl bg-[#E76F51] px-5 py-3.5 text-white card-shadow-lg active:scale-[0.98]">
+          <span className="text-left"><span className="block text-[11px] font-bold text-white/80">Starts at ₹{w.price} • {w.eta}</span><span className="block text-[15px] font-extrabold">Negotiate & Book →</span></span>
+          <span className="rounded-full bg-white/15 p-1"><TrustRing score={w.trustDNA} size={48} stroke={5} dark /></span>
+        </button>
+      </div>
+      <CustomerBottomNav page="worker-profile" go={go} onBook={() => go("booking", w.id)} />
+    </div>
+  );
+}
+
+function Row({ k, v }: { k: string; v: string }) {
+  return <p className="flex items-center justify-between border-b border-dashed border-[#1B4332]/10 pb-2">{k}<span className="font-extrabold text-[#1A1A1A]">{v}</span></p>;
+}
+function InfoTile({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-2xl bg-[#FAF9F6] p-3 ring-1 ring-[#1B4332]/8"><p className="text-[10.5px] font-extrabold uppercase tracking-wide text-[#8a8a8a]">{label}</p><p className="mt-0.5 text-[12.5px] font-extrabold leading-snug">{value}</p></div>;
+}

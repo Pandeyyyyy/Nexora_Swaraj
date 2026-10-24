@@ -1,0 +1,495 @@
+import { useMemo, useState } from "react";
+import {
+  BadgeCheck, Camera, CheckCircle2, ChevronLeft, ChevronRight,
+  ImagePlus, MapPin, MessageCircle, Navigation, Phone, ShieldCheck, Star,
+  TrendingUp, Users, Wallet, Zap, HeartHandshake, Briefcase, LogOut, FileCheck,
+} from "lucide-react";
+import { workers } from "../data";
+import { Stars, TrustRing, WorkerBottomNav } from "../components/shared";
+import type { Page } from "../components/shared";
+
+/* ================= WORKER DASHBOARD ================= */
+export function WorkerDashboard({ go, lang }: { go: (p: Page, w?: string) => void; lang: "en" | "hi" }) {
+  const me = workers[0];
+  const [online, setOnline] = useState(true);
+  const [reqs, setReqs] = useState([
+    { id: 1, name: "Priya Sharma", job: "Kitchen tap leaking", price: 450, dist: "0.6 km", time: "ASAP", status: "new" },
+    { id: 2, name: "Amit Verma", job: "Bathroom flush repair", price: 380, dist: "1.2 km", time: "Today 4 PM", status: "new" },
+    { id: 3, name: "Kavita Rao", job: "Tank cleaning + check", price: 650, dist: "2.0 km", time: "Tomorrow", status: "negotiating" },
+  ]);
+  const [toast, setToast] = useState("");
+
+  const act = (id: number, a: string) => {
+    setReqs((r) => r.filter((x) => x.id !== id));
+    setToast(a === "accept" ? "Job accepted! Customer notified 🎉" : a === "counter" ? "Counter-offer sent via FairFare" : "Request declined politely");
+    setTimeout(() => setToast(""), 2600);
+  };
+
+  return (
+    <div className="page-enter mx-auto max-w-6xl px-4 pb-28 pt-5 sm:px-6 md:pb-16">
+      {/* header + online toggle */}
+      <div className="flex flex-wrap items-center gap-3 rounded-[22px] bg-[#122b21] p-4 text-white card-shadow-lg sm:p-5">
+        <img src={me.photo} alt={me.name} className="h-14 w-14 rounded-2xl object-cover ring-2 ring-[#52B788]" />
+        <div className="min-w-0 flex-1">
+          <p className="flex items-center gap-1.5 text-[16px] font-extrabold">{lang === "hi" ? "नमस्ते, रमेश 🙏" : "Namaste, Ramesh 🙏"} <BadgeCheck className="h-4 w-4 fill-[#52B788] text-white" /></p>
+          <p className="flex items-center gap-2 text-[12px] font-semibold text-white/65"><Stars rating={4.8} /> 4.8 • ◆ 92 TrustDNA • 148 jobs</p>
+        </div>
+        <button onClick={() => setOnline(!online)} aria-label="Toggle online"
+          className={`flex items-center gap-3 rounded-full p-1.5 pr-2 transition ${online ? "bg-[#2D6A4F]" : "bg-white/10"}`}>
+          <span className={`px-2.5 text-[12px] font-extrabold ${online ? "text-white" : "text-white/50"}`}>{online ? "● ONLINE" : "○ OFFLINE"}</span>
+          <span className={`relative h-9 w-[68px] rounded-full transition ${online ? "bg-white/25" : "bg-white/10"}`}>
+            <span className={`absolute top-1 h-7 w-7 rounded-full bg-white shadow transition-all ${online ? "left-[36px]" : "left-1"}`} />
+          </span>
+        </button>
+      </div>
+      {!online && (
+        <div className="animate-fade-in mt-3 rounded-2xl bg-[#FFF1E8] px-4 py-3 text-center text-[13px] font-bold text-[#9c3d1e] ring-1 ring-[#E76F51]/25">
+          You're offline — customers can't see you. Go online to receive jobs.
+        </div>
+      )}
+
+      {/* earnings strip */}
+      <div className="mt-4 grid grid-cols-3 gap-3">
+        <div className="rounded-[18px] bg-white p-4 ring-1 ring-[#1B4332]/10 card-shadow">
+          <p className="flex items-center gap-1 text-[11px] font-extrabold uppercase tracking-wide text-[#8a8a8a]"><Wallet className="h-3.5 w-3.5" /> Today</p>
+          <p className="mt-1 text-[22px] font-extrabold text-[#1B4332] sm:text-[26px]">₹1,240</p>
+          <p className="flex items-center gap-1 text-[11px] font-bold text-[#2D6A4F]"><TrendingUp className="h-3 w-3" /> +18% vs yesterday</p>
+        </div>
+        <div className="rounded-[18px] bg-white p-4 ring-1 ring-[#1B4332]/10 card-shadow">
+          <p className="flex items-center gap-1 text-[11px] font-extrabold uppercase tracking-wide text-[#8a8a8a]"><CheckCircle2 className="h-3.5 w-3.5" /> Jobs</p>
+          <p className="mt-1 text-[22px] font-extrabold sm:text-[26px]">148</p>
+          <p className="text-[11px] font-bold text-[#4A4A4A]">3 today • 98% on-time</p>
+        </div>
+        <div className="rounded-[18px] bg-[#1B4332] p-4 text-white card-shadow">
+          <p className="flex items-center gap-1 text-[11px] font-extrabold uppercase tracking-wide text-white/60"><HeartHandshake className="h-3.5 w-3.5" /> Impact</p>
+          <p className="mt-1 text-[22px] font-extrabold sm:text-[26px]">96 🏠</p>
+          <p className="text-[11px] font-bold text-white/70">households this month</p>
+        </div>
+      </div>
+
+      <div className="mt-5 grid items-start gap-5 lg:grid-cols-[1fr_360px]">
+        <div>
+          <div className="flex items-center justify-between">
+            <h2 className="flex items-center gap-2 text-[16px] font-extrabold">
+              Incoming requests
+              {online && reqs.length > 0 && <span className="grid h-6 w-6 place-items-center rounded-full bg-[#E76F51] text-[11px] text-white">{reqs.length}</span>}
+            </h2>
+            <button onClick={() => go("worker-jobs")} className="text-[12.5px] font-bold text-[#2D6A4F]">All jobs →</button>
+          </div>
+          {!online ? (
+            <div className="mt-3 rounded-[20px] border-2 border-dashed border-[#1B4332]/15 bg-white/60 p-8 text-center">
+              <p className="text-[15px] font-extrabold">You're offline 😴</p>
+              <p className="mx-auto mt-1 max-w-xs text-[13px] font-medium text-[#4A4A4A]">Go online to start receiving nearby job requests instantly.</p>
+            </div>
+          ) : reqs.length === 0 ? (
+            <div className="mt-3 rounded-[20px] border-2 border-dashed border-[#2D6A4F]/25 bg-[#EFFAF1]/60 p-8 text-center">
+              <p className="text-[15px] font-extrabold text-[#1B4332]">All caught up! 🎉</p>
+              <p className="mx-auto mt-1 max-w-xs text-[13px] font-medium text-[#4A4A4A]">New requests will appear here with a sound. Great response rate keeps you on top!</p>
+            </div>
+          ) : (
+            <div className="mt-3 space-y-3">
+              {reqs.map((r) => (
+                <div key={r.id} className="animate-chat-in overflow-hidden rounded-[20px] bg-white ring-1 ring-[#1B4332]/10 card-shadow">
+                  <div className="flex items-center gap-1.5 bg-[#FEF6EC] px-4 py-2 text-[11px] font-extrabold text-[#9c3d1e]">
+                    <Zap className="h-3.5 w-3.5" /> {r.time} • {r.dist} away {r.status === "negotiating" && "• countered ₹600"}
+                  </div>
+                  <div className="p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[15px] font-extrabold">{r.name}</p>
+                      <p className="text-[18px] font-extrabold text-[#1B4332]">₹{r.price}</p>
+                    </div>
+                    <p className="mt-0.5 text-[13px] font-semibold text-[#4A4A4A]">{r.job}</p>
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      <button onClick={() => act(r.id, "accept")} className="rounded-2xl bg-[#1B4332] py-3 text-[13px] font-extrabold text-white transition hover:bg-[#2D6A4F]">Accept</button>
+                      <button onClick={() => act(r.id, "counter")} className="rounded-2xl bg-[#FEF6EC] py-3 text-[13px] font-extrabold text-[#c65a3a] ring-1 ring-[#E76F51]/30">Counter</button>
+                      <button onClick={() => act(r.id, "reject")} className="rounded-2xl py-3 text-[13px] font-extrabold text-[#8a8a8a] ring-1 ring-[#1B4332]/12">Decline</button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* today's schedule */}
+          <h2 className="mt-6 text-[16px] font-extrabold">Today's schedule</h2>
+          <div className="mt-3 space-y-2.5">
+            {[
+              { t: "10:00 AM", n: "Priya S. — Tap repair", s: "In Progress", c: "bg-[#E76F51] text-white", done: false },
+              { t: "1:00 PM", n: "Amit V. — Flush repair", s: "Upcoming", c: "bg-[#1B4332]/8 text-[#1B4332]", done: false },
+              { t: "9:00 AM", n: "Sunil K. — Tank check", s: "Done ✓ ₹550", c: "bg-[#EFFAF1] text-[#1B4332]", done: true },
+            ].map((j, i) => (
+              <div key={i} className={`flex items-center gap-3 rounded-2xl bg-white p-3.5 ring-1 ring-[#1B4332]/10 ${j.done ? "opacity-70" : ""}`}>
+                <span className="w-20 shrink-0 text-[12px] font-extrabold text-[#4A4A4A]">{j.t}</span>
+                <span className="h-10 w-1 rounded-full bg-[#1B4332]/15" />
+                <span className="min-w-0 flex-1 text-[13.5px] font-extrabold">{j.n}</span>
+                <span className={`shrink-0 rounded-full px-3 py-1.5 text-[11px] font-extrabold ${j.c}`}>{j.s}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <aside className="space-y-4 lg:sticky lg:top-24">
+          <div className="rounded-[20px] bg-white p-5 ring-1 ring-[#1B4332]/10 card-shadow">
+            <p className="text-[14px] font-extrabold">Quick stats</p>
+            <div className="mt-3 space-y-2.5">
+              <StatBar label="Response rate" value="96%" pct={96} />
+              <StatBar label="On-time arrival" value="98%" pct={98} />
+              <StatBar label="Repeat customers" value="68%" pct={68} />
+            </div>
+            <button onClick={() => go("worker-earnings")} className="mt-4 w-full rounded-2xl bg-[#1B4332] py-3 text-[13px] font-extrabold text-white">Earnings & impact →</button>
+          </div>
+          <div className="overflow-hidden rounded-[20px] bg-gradient-to-br from-[#E76F51] to-[#c65a3a] p-5 text-white">
+            <p className="flex items-center gap-1.5 text-[13px] font-extrabold"><Zap className="h-4 w-4" /> Publish “Available Now”</p>
+            <p className="mt-1 text-[12.5px] font-medium text-white/80">Get 3× more instant bookings when customers see you online nearby.</p>
+            <button onClick={() => setToast("You're now featured as Available Now ⭐")} className="mt-3 w-full rounded-2xl bg-white py-2.5 text-[13px] font-extrabold text-[#c65a3a]">Boost my visibility</button>
+          </div>
+        </aside>
+      </div>
+
+      {toast && (
+        <div className="animate-slide-up fixed bottom-24 left-1/2 z-50 w-[calc(100%-32px)] max-w-md -translate-x-1/2 rounded-2xl bg-[#122b21] px-5 py-3.5 text-center text-[13.5px] font-bold text-white card-shadow-lg md:bottom-8">
+          {toast}
+        </div>
+      )}
+      <WorkerBottomNav page="worker-dashboard" go={go} />
+    </div>
+  );
+}
+
+function StatBar({ label, value, pct }: { label: string; value: string; pct: number }) {
+  return (
+    <div>
+      <p className="flex justify-between text-[12.5px] font-bold text-[#4A4A4A]">{label}<span className="font-extrabold text-[#1B4332]">{value}</span></p>
+      <div className="mt-1 h-2 overflow-hidden rounded-full bg-[#FAF9F6] ring-1 ring-[#1B4332]/10">
+        <div className="h-full rounded-full bg-gradient-to-r from-[#2D6A4F] to-[#52B788] transition-all duration-700" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+/* ================= WORKER ONBOARDING ================= */
+export function WorkerOnboarding({ go }: { go: (p: Page) => void }) {
+  const [step, setStep] = useState(0);
+  const [form, setForm] = useState({ name: "", phone: "", skill: "Plumbing", rate: "250", area: "Laxmi Nagar + 3km" });
+  const steps = ["Personal", "Skills & rates", "Service area", "Documents"];
+  return (
+    <div className="page-enter mx-auto max-w-2xl px-4 pb-28 pt-6 sm:px-6">
+      <button onClick={() => go("landing")} className="flex items-center gap-1.5 text-[13px] font-bold text-[#4A4A4A]"><ChevronLeft className="h-4 w-4" /> Back</button>
+      <h1 className="font-display mt-2 text-[26px] font-black tracking-tight sm:text-[32px]">Join Saharaa as a worker 🛠️</h1>
+      <p className="mt-1 text-[14px] font-medium text-[#4A4A4A]">Free to join • Earn from day one • Tips are 100% yours</p>
+      <div className="mt-5 flex items-center">
+        {steps.map((s, i) => (
+          <div key={s} className="flex flex-1 items-center">
+            <div className="flex flex-col items-center gap-1.5">
+              <span className={`grid h-9 w-9 place-items-center rounded-full text-[13px] font-extrabold transition ${i < step ? "bg-[#2D6A4F] text-white" : i === step ? "bg-[#1B4332] text-white animate-pulse-ring" : "bg-white text-[#8a8a8a] ring-1 ring-[#1B4332]/15"}`}>{i < step ? "✓" : i + 1}</span>
+              <span className={`hidden text-[10.5px] font-extrabold sm:block ${i === step ? "text-[#1B4332]" : "text-[#8a8a8a]"}`}>{s}</span>
+            </div>
+            {i < steps.length - 1 && <div className={`mx-1 mb-5 h-1 flex-1 rounded-full ${i < step ? "bg-[#2D6A4F]" : "bg-[#1B4332]/10"}`} />}
+          </div>
+        ))}
+      </div>
+
+      <div className="animate-fade-in mt-4 rounded-[22px] bg-white p-5 ring-1 ring-[#1B4332]/10 card-shadow sm:p-7" key={step}>
+        {step === 0 && (
+          <div>
+            <h2 className="text-[17px] font-extrabold">Your details</h2>
+            <label className="mt-4 block text-[12px] font-extrabold uppercase tracking-wide text-[#4A4A4A]">Full name</label>
+            <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Ramesh Kumar" className="mt-1.5 h-13 w-full rounded-2xl bg-[#FAF9F6] px-4 py-3.5 text-[14px] font-semibold outline-none ring-1 ring-[#1B4332]/12 focus:ring-[#2D6A4F]" />
+            <label className="mt-4 block text-[12px] font-extrabold uppercase tracking-wide text-[#4A4A4A]">Mobile number</label>
+            <div className="mt-1.5 flex gap-2">
+              <span className="grid place-items-center rounded-2xl bg-[#FAF9F6] px-4 text-[14px] font-extrabold ring-1 ring-[#1B4332]/12">+91</span>
+              <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} inputMode="numeric" placeholder="98765 43210" className="w-full rounded-2xl bg-[#FAF9F6] px-4 py-3.5 text-[14px] font-semibold outline-none ring-1 ring-[#1B4332]/12 focus:ring-[#2D6A4F]" />
+            </div>
+            <div className="mt-4 flex items-center gap-2.5 rounded-2xl bg-[#EFFAF1] p-3.5 text-[12.5px] font-bold text-[#1B4332] ring-1 ring-[#2D6A4F]/20"><ShieldCheck className="h-5 w-5 shrink-0" /> OTP verification + Hindi voice guidance available on every step.</div>
+          </div>
+        )}
+        {step === 1 && (
+          <div>
+            <h2 className="text-[17px] font-extrabold">Skills & rates</h2>
+            <p className="mt-4 text-[12px] font-extrabold uppercase tracking-wide text-[#4A4A4A]">Primary skill</p>
+            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {["Plumbing", "Electrical", "Cleaning", "Painting", "Cooking", "Carpentry"].map((s) => (
+                <button key={s} onClick={() => setForm({ ...form, skill: s })} className={`rounded-2xl py-3 text-[13px] font-extrabold ring-1 transition ${form.skill === s ? "bg-[#1B4332] text-white ring-[#1B4332]" : "bg-[#FAF9F6] ring-[#1B4332]/12"}`}>{s}</button>
+              ))}
+            </div>
+            <p className="mt-4 text-[12px] font-extrabold uppercase tracking-wide text-[#4A4A4A]">Starting rate: <span className="text-[16px] text-[#E76F51]">₹{form.rate}</span></p>
+            <input type="range" min={99} max={999} step={10} value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} className="mt-2 w-full accent-[#E76F51]" />
+            <p className="text-[12px] font-semibold text-[#4A4A4A]">Tip: workers priced ₹199–₹349 fairly get 2× more bookings. You can negotiate every job in FairFare.</p>
+          </div>
+        )}
+        {step === 2 && (
+          <div>
+            <h2 className="text-[17px] font-extrabold">Where do you work?</h2>
+            <div className="dot-grid mt-3 grid h-44 place-items-center rounded-2xl bg-[#EDE8DA] ring-1 ring-[#1B4332]/12">
+              <div className="text-center"><span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#1B4332] text-white"><MapPin className="h-5 w-5" /></span><p className="mt-2 rounded-full bg-white px-4 py-1.5 text-[12px] font-extrabold card-shadow">{form.area}</p></div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {["Laxmi Nagar + 3km", "Preet Vihar + 4km", "Mayur Vihar + 5km", "Full East Delhi"].map((a) => (
+                <button key={a} onClick={() => setForm({ ...form, area: a })} className={`rounded-full px-4 py-2 text-[12.5px] font-extrabold ring-1 ${form.area === a ? "bg-[#1B4332] text-white" : "bg-[#FAF9F6] ring-[#1B4332]/12"}`}>{a}</button>
+              ))}
+            </div>
+          </div>
+        )}
+        {step === 3 && (
+          <div>
+            <h2 className="text-[17px] font-extrabold">Verify your identity 🛡️</h2>
+            <p className="mt-1 text-[13px] font-medium text-[#4A4A4A]">Builds your TrustDNA score — verified workers earn 3× more.</p>
+            <div className="mt-4 space-y-2.5">
+              {[["Aadhaar card", "Uploaded ✓", true], ["Address proof", "Uploaded ✓", true], ["Skill certificate (optional)", "Upload to boost TrustDNA +8", false]].map(([t, s, done]) => (
+                <div key={t as string} className="flex items-center gap-3 rounded-2xl bg-[#FAF9F6] p-4 ring-1 ring-[#1B4332]/10">
+                  <span className={`grid h-11 w-11 place-items-center rounded-2xl ${done ? "bg-[#2D6A4F] text-white" : "bg-white text-[#1B4332] ring-1 ring-[#1B4332]/15"}`}>{done ? <FileCheck className="h-5 w-5" /> : <ImagePlus className="h-5 w-5" />}</span>
+                  <span className="flex-1"><span className="block text-[13.5px] font-extrabold">{t}</span><span className={`block text-[11.5px] font-bold ${done ? "text-[#2D6A4F]" : "text-[#E76F51]"}`}>{s}</span></span>
+                  {!done && <button className="rounded-full bg-[#1B4332] px-4 py-2 text-[12px] font-extrabold text-white">Upload</button>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="mt-6 flex gap-2">
+          {step > 0 && <button onClick={() => setStep(step - 1)} className="rounded-2xl px-5 py-3.5 text-[14px] font-extrabold text-[#4A4A4A] ring-1 ring-[#1B4332]/15">Back</button>}
+          <button onClick={() => (step < 3 ? setStep(step + 1) : go("worker-dashboard"))} className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[#1B4332] py-3.5 text-[14px] font-extrabold text-white transition hover:bg-[#2D6A4F]">
+            {step < 3 ? <>Continue <ChevronRight className="h-4 w-4" /></> : "Submit & go online 🎉"}
+          </button>
+        </div>
+      </div>
+      <WorkerBottomNav page="worker-onboarding" go={go} />
+    </div>
+  );
+}
+
+/* ================= JOBS ================= */
+export function WorkerJobs({ go }: { go: (p: Page, w?: string) => void }) {
+  const [tab, setTab] = useState<"active" | "past">("active");
+  const [jobStage, setJobStage] = useState(1);
+  const [showProof, setShowProof] = useState(false);
+  return (
+    <div className="page-enter mx-auto max-w-6xl px-4 pb-28 pt-5 sm:px-6 md:pb-16">
+      <h1 className="font-display text-[24px] font-black sm:text-[30px]">My jobs</h1>
+      <div className="mt-3 flex rounded-full bg-white p-1 ring-1 ring-[#1B4332]/12 sm:max-w-sm">
+        <button onClick={() => setTab("active")} className={`flex-1 rounded-full py-2.5 text-[13px] font-extrabold ${tab === "active" ? "bg-[#1B4332] text-white" : "text-[#4A4A4A]"}`}>Active (2)</button>
+        <button onClick={() => setTab("past")} className={`flex-1 rounded-full py-2.5 text-[13px] font-extrabold ${tab === "past" ? "bg-[#1B4332] text-white" : "text-[#4A4A4A]"}`}>Completed</button>
+      </div>
+
+      {tab === "active" ? (
+        <div className="mt-4 grid items-start gap-5 lg:grid-cols-[1fr_360px]">
+          <div className="rounded-[22px] bg-white p-5 ring-1 ring-[#1B4332]/10 card-shadow sm:p-6">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div><p className="text-[17px] font-extrabold">Priya S. — Tap repair • ₹450 locked</p><p className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#4A4A4A]"><MapPin className="h-3.5 w-3.5 text-[#E76F51]" /> B-42, Laxmi Nagar • 0.6 km</p></div>
+              <span className="rounded-full bg-[#FEF6EC] px-3 py-1.5 text-[11.5px] font-extrabold text-[#c65a3a]">FairFare locked ₹450</span>
+            </div>
+            <div className="mt-4 flex items-center gap-1">
+              {["Accepted", "On the Way", "Start Work", "Complete"].map((s, i) => (
+                <div key={s} className="flex flex-1 items-center gap-1">
+                  <button onClick={() => setJobStage(i)} className={`flex-1 rounded-2xl py-3 text-[11.5px] font-extrabold transition sm:text-[12.5px] ${i < jobStage ? "bg-[#2D6A4F] text-white" : i === jobStage ? "bg-[#1B4332] text-white animate-pulse-ring" : "bg-[#FAF9F6] text-[#8a8a8a] ring-1 ring-[#1B4332]/10"}`}>
+                    {i < jobStage ? `✓ ${s}` : s}
+                  </button>
+                  {i < 3 && <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[#8a8a8a]" />}
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              <button className="flex items-center justify-center gap-1.5 rounded-2xl bg-[#FAF9F6] py-3 text-[12.5px] font-extrabold ring-1 ring-[#1B4332]/12"><Navigation className="h-4 w-4" /> Navigate</button>
+              <button className="flex items-center justify-center gap-1.5 rounded-2xl bg-[#FAF9F6] py-3 text-[12.5px] font-extrabold ring-1 ring-[#1B4332]/12"><MessageCircle className="h-4 w-4" /> Chat</button>
+              <button className="flex items-center justify-center gap-1.5 rounded-2xl bg-[#FAF9F6] py-3 text-[12.5px] font-extrabold ring-1 ring-[#1B4332]/12"><Phone className="h-4 w-4" /> Call</button>
+            </div>
+            <button onClick={() => setShowProof(!showProof)} className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[#1B4332]/25 bg-[#FAF9F6] py-3.5 text-[13.5px] font-extrabold text-[#1B4332]">
+              <Camera className="h-5 w-5" /> {showProof ? "Photos added ✓ (2)" : "Upload Proof of Work (before/after)"}
+            </button>
+            {showProof && (
+              <div className="animate-fade-in mt-3 grid grid-cols-2 gap-3">
+                <div className="overflow-hidden rounded-2xl ring-1 ring-[#1B4332]/12"><img src="https://images.pexels.com/photos/19140578/pexels-photo-19140578.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200" alt="Before" className="h-32 w-full object-cover" /><p className="bg-[#FAF9F6] py-1.5 text-center text-[11px] font-extrabold">BEFORE ✓</p></div>
+                <div className="overflow-hidden rounded-2xl ring-2 ring-[#2D6A4F]"><img src="https://images.pexels.com/photos/29226620/pexels-photo-29226620.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200" alt="After" className="h-32 w-full object-cover" /><p className="bg-[#EFFAF1] py-1.5 text-center text-[11px] font-extrabold text-[#1B4332]">AFTER ✓</p></div>
+              </div>
+            )}
+          </div>
+          <aside className="space-y-3">
+            <div className="rounded-[20px] bg-white p-5 ring-1 ring-[#1B4332]/10 card-shadow">
+              <p className="text-[13px] font-extrabold">Next: Amit V. — 1:00 PM</p><p className="text-[12px] font-semibold text-[#4A4A4A]">Flush repair • ₹380 • 1.2 km</p>
+              <button onClick={() => go("worker-dashboard")} className="mt-3 w-full rounded-2xl bg-[#FAF9F6] py-2.5 text-[12.5px] font-extrabold ring-1 ring-[#1B4332]/12">View in dashboard</button>
+            </div>
+            <div className="rounded-[20px] bg-[#1B4332] p-5 text-white"><p className="text-[13px] font-extrabold">💡 Pro tip</p><p className="mt-1 text-[12.5px] font-medium text-white/70">Uploading proof photos before asking for payment increases 5-star reviews by 40%.</p></div>
+          </aside>
+        </div>
+      ) : (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {[
+            { n: "Sunil K.", j: "Tank check", p: 550, r: 5, t: "Today, 9 AM" },
+            { n: "Rekha D.", j: "Pipe fitting", p: 720, r: 5, t: "Yesterday" },
+            { n: "Manoj T.", j: "Leak repair", p: 400, r: 4, t: "2 days ago" },
+          ].map((j, i) => (
+            <div key={i} className="rounded-[20px] bg-white p-4 ring-1 ring-[#1B4332]/10 card-shadow">
+              <div className="flex items-center justify-between"><p className="text-[14px] font-extrabold">{j.n}</p><span className="rounded-full bg-[#EFFAF1] px-2.5 py-1 text-[12px] font-extrabold text-[#1B4332]">₹{j.p} ✓ paid</span></div>
+              <p className="text-[12.5px] font-semibold text-[#4A4A4A]">{j.j} • {j.t}</p>
+              <p className="mt-1.5"><Stars rating={j.r} /></p>
+            </div>
+          ))}
+        </div>
+      )}
+      <WorkerBottomNav page="worker-jobs" go={go} />
+    </div>
+  );
+}
+
+/* ================= EARNINGS & IMPACT ================= */
+export function WorkerEarnings({ go, lang }: { go: (p: Page) => void; lang: "en" | "hi" }) {
+  const [range, setRange] = useState<"week" | "month">("week");
+  const week = [420, 650, 380, 720, 910, 1240, 860];
+  const month = [4200, 5100, 4800, 6200];
+  const data = range === "week" ? week : month;
+  const max = Math.max(...data);
+  const labels = range === "week" ? ["M", "T", "W", "T", "F", "S", "S"] : ["W1", "W2", "W3", "W4"];
+
+  const stats = useMemo(() => ([
+    { icon: Wallet, v: range === "week" ? "₹5,180" : "₹20,300", l: lang === "hi" ? "कुल कमाई" : "Total earnings" },
+    { icon: CheckCircle2, v: "21", l: "Jobs done" },
+    { icon: Star, v: "₹340", l: "Tips (100% yours)" },
+    { icon: Users, v: "14", l: "Repeat customers" },
+  ]), [range, lang]);
+
+  return (
+    <div className="page-enter mx-auto max-w-6xl px-4 pb-28 pt-5 sm:px-6 md:pb-16">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="font-display text-[24px] font-black sm:text-[30px]">{lang === "hi" ? "कमाई और प्रभाव" : "Earnings & impact"}</h1>
+        <div className="flex rounded-full bg-white p-1 ring-1 ring-[#1B4332]/12">
+          <button onClick={() => setRange("week")} className={`rounded-full px-4 py-2 text-[12.5px] font-extrabold ${range === "week" ? "bg-[#1B4332] text-white" : "text-[#4A4A4A]"}`}>Week</button>
+          <button onClick={() => setRange("month")} className={`rounded-full px-4 py-2 text-[12.5px] font-extrabold ${range === "month" ? "bg-[#1B4332] text-white" : "text-[#4A4A4A]"}`}>Month</button>
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {stats.map((s, i) => (
+          <div key={i} className="rounded-[18px] bg-white p-4 ring-1 ring-[#1B4332]/10 card-shadow">
+            <s.icon className="h-5 w-5 text-[#1B4332]" />
+            <p className="mt-2 text-[20px] font-extrabold sm:text-[24px]">{s.v}</p>
+            <p className="text-[12px] font-semibold text-[#4A4A4A]">{s.l}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 grid items-start gap-5 lg:grid-cols-[1fr_360px]">
+        <div className="rounded-[22px] bg-white p-5 ring-1 ring-[#1B4332]/10 card-shadow sm:p-6">
+          <p className="flex items-center justify-between text-[14px] font-extrabold">Earnings chart <span className="flex items-center gap-1 text-[12px] text-[#2D6A4F]"><TrendingUp className="h-4 w-4" /> +22% growth</span></p>
+          <div className="mt-5 flex h-48 items-end gap-2 sm:gap-3">
+            {data.map((v, i) => (
+              <div key={i} className="flex flex-1 flex-col items-center gap-1.5">
+                <span className="text-[10.5px] font-extrabold text-[#1B4332]">₹{v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v}</span>
+                <div className="flex w-full flex-1 items-end rounded-xl bg-[#FAF9F6] ring-1 ring-[#1B4332]/8">
+                  <div className={`w-full rounded-xl transition-all duration-700 ${i === data.length - 2 ? "bg-gradient-to-t from-[#c65a3a] to-[#F4A261]" : "bg-gradient-to-t from-[#1B4332] to-[#52B788]"}`} style={{ height: `${(v / max) * 100}%`, minHeight: 12 }} />
+                </div>
+                <span className="text-[11px] font-bold text-[#8a8a8a]">{labels[i]}</span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 flex items-center gap-4 rounded-2xl bg-[#FAF9F6] p-3.5 text-[12px] font-bold text-[#4A4A4A] ring-1 ring-[#1B4332]/8">
+            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-[#2D6A4F]" /> Job payouts</span>
+            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-[#F4A261]" /> Best day</span>
+            <span className="ml-auto hidden sm:block">Avg/day: ₹740</span>
+          </div>
+        </div>
+
+        <aside className="space-y-4">
+          <div className="overflow-hidden rounded-[22px] bg-[#1B4332] p-5 text-white card-shadow-lg sm:p-6">
+            <p className="flex items-center gap-2 text-[12px] font-extrabold uppercase tracking-widest text-[#52B788]"><HeartHandshake className="h-4 w-4" /> Livelihood impact</p>
+            <p className="font-display mt-2 text-[30px] font-black leading-tight">You helped <span className="text-[#F4A261]">96 households</span> this month 🏠</p>
+            <div className="mt-4 space-y-2.5 text-[12.5px] font-bold">
+              <ImpactRow k="Families served" v="96" />
+              <ImpactRow k="Repeat families" v="34" />
+              <ImpactRow k="Neighbourhood earnings kept local" v="68%" />
+              <ImpactRow k="TrustDNA growth" v="+6 pts" />
+            </div>
+            <div className="mt-4 flex items-center gap-3 rounded-2xl bg-white/10 p-3.5 ring-1 ring-white/15">
+              <TrustRing score={92} size={52} stroke={6} dark />
+              <p className="text-[12px] font-semibold text-white/75">Top 5% of plumbers in East Delhi. Keep your response under 5 mins to hit 95!</p>
+            </div>
+          </div>
+          <div className="rounded-[20px] bg-white p-5 ring-1 ring-[#1B4332]/10 card-shadow">
+            <p className="text-[13.5px] font-extrabold">Payout • UPI ****4821</p>
+            <p className="text-[12px] font-semibold text-[#4A4A4A]">Next payout tomorrow • ₹1,240 • No commission on tips</p>
+            <button className="mt-3 w-full rounded-2xl bg-[#EFFAF1] py-2.5 text-[12.5px] font-extrabold text-[#1B4332] ring-1 ring-[#2D6A4F]/25">Download statement</button>
+          </div>
+        </aside>
+      </div>
+      <WorkerBottomNav page="worker-earnings" go={go} />
+    </div>
+  );
+}
+
+function ImpactRow({ k, v }: { k: string; v: string }) {
+  return <p className="flex justify-between border-b border-white/10 pb-2 text-white/75">{k}<span className="font-extrabold text-white">{v}</span></p>;
+}
+
+/* ================= AUTH ================= */
+export function Auth({ go, setRole, lang }: { go: (p: Page) => void; setRole: (r: "customer" | "worker" | "admin") => void; lang: "en" | "hi" }) {
+  const [role, setR] = useState<"customer" | "worker" | "admin">("customer");
+  const [phone, setPhone] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [otp, setOtp] = useState(["", "", "", ""]);
+
+  const enter = () => {
+    setRole(role);
+    go(role === "worker" ? "worker-dashboard" : role === "admin" ? "admin" : "customer-home");
+  };
+
+  return (
+    <div className="page-enter mx-auto grid max-w-5xl gap-6 px-4 py-8 sm:px-6 lg:grid-cols-2 lg:py-14">
+      <div className="hidden overflow-hidden rounded-[24px] bg-[#1B4332] p-8 text-white lg:block">
+        <div className="jaali-pattern absolute inset-0 opacity-30" />
+        <div className="relative">
+          <p className="inline-flex rounded-full bg-white/10 px-3.5 py-1.5 text-[11px] font-extrabold uppercase tracking-widest text-[#F4A261] ring-1 ring-white/15">Vecnaverse • Social Impact</p>
+          <h2 className="font-display mt-4 text-[34px] font-black leading-tight">One account.<br />Two ways to <span className="text-[#F4A261]">grow.</span></h2>
+          <div className="mt-6 space-y-3">
+            {[["Find trusted help in minutes", "Verified workers, fair prices, live tracking"], ["Earn with dignity", "Zero joining fee, tips 100% yours, weekly payouts"]].map(([t, d]) => (
+              <div key={t} className="flex gap-3 rounded-2xl bg-white/8 p-4 ring-1 ring-white/12"><CheckCircle2 className="h-5 w-5 shrink-0 text-[#52B788]" /><span><span className="block text-[14px] font-extrabold">{t}</span><span className="block text-[12.5px] font-medium text-white/65">{d}</span></span></div>
+            ))}
+          </div>
+          <img src="https://images.pexels.com/photos/8819155/pexels-photo-8819155.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200" alt="Community" className="mt-6 h-48 w-full rounded-2xl object-cover ring-1 ring-white/20" />
+        </div>
+      </div>
+      <div className="rounded-[24px] bg-white p-6 ring-1 ring-[#1B4332]/10 card-shadow sm:p-8">
+        <h1 className="font-display text-[24px] font-black">{lang === "hi" ? "शुरू करें" : "Get started"}</h1>
+        <p className="mt-1 text-[13.5px] font-medium text-[#4A4A4A]">Choose your role — switch anytime.</p>
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          {([
+            { id: "customer", t: "Customer", hi: "ग्राहक", icon: Phone },
+            { id: "worker", t: "Worker", hi: "कारीगर", icon: Briefcase },
+            { id: "admin", t: "Admin", hi: "एडमिन", icon: ShieldCheck },
+          ] as const).map((r) => (
+            <button key={r.id} onClick={() => setR(r.id)} className={`flex flex-col items-center gap-1.5 rounded-2xl py-4 ring-2 transition ${role === r.id ? "bg-[#1B4332] text-white ring-[#1B4332]" : "bg-[#FAF9F6] text-[#1A1A1A] ring-[#1B4332]/10"}`}>
+              <r.icon className="h-5 w-5" /><span className="text-[12.5px] font-extrabold">{lang === "hi" ? r.hi : r.t}</span>
+            </button>
+          ))}
+        </div>
+        {!otpSent ? (
+          <div className="mt-5">
+            <label className="text-[12px] font-extrabold uppercase tracking-wide text-[#4A4A4A]">Mobile number</label>
+            <div className="mt-1.5 flex gap-2">
+              <span className="grid place-items-center rounded-2xl bg-[#FAF9F6] px-4 text-[14px] font-extrabold ring-1 ring-[#1B4332]/12">+91</span>
+              <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="numeric" placeholder="98765 43210" className="h-13 w-full rounded-2xl bg-[#FAF9F6] px-4 py-3.5 text-[15px] font-bold outline-none ring-1 ring-[#1B4332]/12 focus:ring-[#2D6A4F]" />
+            </div>
+            <button onClick={() => setOtpSent(true)} className="mt-3 w-full rounded-2xl bg-[#1B4332] py-4 text-[14.5px] font-extrabold text-white transition hover:bg-[#2D6A4F]">Send OTP →</button>
+            <p className="mt-3 text-center text-[11.5px] font-semibold text-[#8a8a8a]">Demo: any number works • OTP auto-filled on next step</p>
+          </div>
+        ) : (
+          <div className="animate-slide-up mt-5">
+            <label className="text-[12px] font-extrabold uppercase tracking-wide text-[#4A4A4A]">Enter OTP sent to +91 {phone || "98765 43210"}</label>
+            <div className="mt-2 flex gap-2">
+              {otp.map((d, i) => (
+                <input key={i} value={d} maxLength={1} inputMode="numeric"
+                  onChange={(e) => { const n = [...otp]; n[i] = e.target.value; setOtp(n); if (e.target.value && i < 3) document.getElementById(`otp-${i + 1}`)?.focus(); }}
+                  id={`otp-${i}`} placeholder={["4", "2", "8", "1"][i]}
+                  className="h-14 w-full rounded-2xl bg-[#FAF9F6] text-center text-[20px] font-extrabold outline-none ring-1 ring-[#1B4332]/12 focus:ring-[#2D6A4F]" />
+              ))}
+            </div>
+            <button onClick={enter} className="mt-3 w-full rounded-2xl bg-[#E76F51] py-4 text-[14.5px] font-extrabold text-white transition hover:bg-[#c65a3a]">
+              Verify & continue as {role} →
+            </button>
+            <button onClick={() => setOtpSent(false)} className="mt-2 w-full py-2 text-[12.5px] font-bold text-[#4A4A4A]">← Change number</button>
+          </div>
+        )}
+        <div className="mt-5 flex items-center gap-2 rounded-2xl bg-[#FAF9F6] p-3.5 text-[11.5px] font-semibold text-[#4A4A4A] ring-1 ring-[#1B4332]/8">
+          <LogOut className="h-4 w-4 rotate-180" /> By continuing you agree to fair-work terms: honest pricing, respectful communication, verified identity.
+        </div>
+      </div>
+    </div>
+  );
+}
