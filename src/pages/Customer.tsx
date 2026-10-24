@@ -1,13 +1,17 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import {
   BadgeCheck, Camera, CheckCircle2, ChevronLeft, ChevronRight, Clock,
   List, Map as MapIcon, MapPin, MessageCircle, Navigation, Phone, Search,
-  ShieldCheck, SlidersHorizontal, Star, X, Zap, Heart,
+  ShieldCheck, SlidersHorizontal, Star, X, Zap, Heart, RefreshCw, AlertCircle, Loader2
 } from "lucide-react";
 import { services, workers } from "../data";
 import type { Worker } from "../data";
 import { CustomerBottomNav, ServiceIcon, Stars, TrustRing, VoiceButton, EmptyState, SkeletonCard } from "../components/shared";
 import type { Page } from "../components/shared";
+import {
+  fetchServices, fetchMarketplaceWorkers, fetchWorkerById, normalizeWorker,
+  type MarketplaceService, type MarketplaceWorker
+} from "../lib/marketplace";
 
 /* ================= CUSTOMER HOME ================= */
 export function CustomerHome({
@@ -25,36 +29,76 @@ export function CustomerHome({
   const [listening, setListening] = useState(false);
   const [voiceText, setVoiceText] = useState("");
   const [filter, setFilter] = useState("All");
-  const [loading] = useState(false);
   const [liked, setLiked] = useState<string[]>([]);
   const [showSchedulePicker, setShowSchedulePicker] = useState(false);
 
-  const nearby = useMemo(() => {
-    let list = [...workers];
-    if (selectedService !== "All") list = list.filter((w) => w.serviceId === selectedService);
-    if (filter === "ASAP" || filter === "Available now") {
-      list = list.filter((w) => w.availableNow);
-      list.sort((a, b) => a.distanceKm - b.distanceKm);
-    } else if (filter === "Schedule") {
-      // Schedule mode: show top reliable workers first
-      list = list.sort((a, b) => (b.trustDNA ?? 0) - (a.trustDNA ?? 0));
-    } else if (filter === "Top rated") {
-      list = list.filter((w) => (w.rating ?? 0) >= 4.8);
-    } else if (filter === "Nearest") {
-      list = list.sort((a, b) => a.distanceKm - b.distanceKm);
-    } else if (filter === "Budget") {
-      list = list.filter((w) => w.price < 350);
+  // 1. Live Services Catalog from Supabase
+  const [catalog, setCatalog] = useState<MarketplaceService[]>([]);
+  useEffect(() => {
+    let active = true;
+    fetchServices().then((res) => {
+      if (!active) return;
+      if (res.data && res.data.length > 0) {
+        setCatalog(res.data);
+      }
+    });
+    return () => { active = false; };
+  }, []);
+
+  const displayServices = catalog.length > 0
+    ? catalog.map((s) => ({
+        id: s.id,
+        en: s.name_en,
+        hi: s.name_hi,
+        icon: s.icon,
+        desc: s.description,
+        basePrice: Number(s.base_price),
+      }))
+    : services;
+
+  // 2. Live Workers from marketplace_workers security view
+  const [workersList, setWorkersList] = useState<Worker[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [workersError, setWorkersError] = useState<string | null>(null);
+
+  const loadWorkers = useCallback(async () => {
+    setLoading(true);
+    setWorkersError(null);
+
+    const isAvailableOnly = filter === "ASAP" || filter === "Available now";
+    const sortBy =
+      filter === "Top rated"
+        ? "Highest rated"
+        : filter === "Budget"
+        ? "Price: low to high"
+        : filter === "Schedule"
+        ? "TrustDNA"
+        : "Recommended";
+
+    const res = await fetchMarketplaceWorkers({
+      serviceId: selectedService,
+      searchQuery: q,
+      location,
+      onlyAvailableNow: isAvailableOnly,
+      sortBy,
+    });
+
+    if (res.error) {
+      setWorkersError(res.error);
+      setWorkersList([]);
+    } else {
+      const normalized = res.data.map((w) => normalizeWorker(w, catalog));
+      setWorkersList(normalized);
     }
-    const query = q.trim().toLowerCase();
-    if (query) {
-      list = list.filter((w) =>
-        (w.name + " " + w.hindiName + " " + w.service + " " + w.skills.join(" ") + " " + w.area)
-          .toLowerCase()
-          .includes(query)
-      );
-    }
-    return list;
-  }, [selectedService, filter, q]);
+    setLoading(false);
+  }, [selectedService, q, location, filter, catalog]);
+
+  useEffect(() => {
+    loadWorkers();
+  }, [loadWorkers]);
+
+  const nearby = workersList;
+
 
   const handleFilterClick = (fEn: string) => {
     if (fEn === "Schedule") {
@@ -230,7 +274,7 @@ export function CustomerHome({
           <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#E76F51]/15 text-[#E76F51] text-lg font-black">✦</span>
           <span className="text-[11.5px] font-extrabold">{lang === "hi" ? "सभी" : "All"}</span>
         </button>
-        {services.map((s) => (
+        {displayServices.map((s) => (
           <button key={s.id} onClick={() => { setSelectedService(s.id); }}
             className={`flex w-[86px] shrink-0 flex-col items-center gap-2 rounded-[18px] p-3.5 ring-1 transition active:scale-95 sm:w-auto ${selectedService === s.id ? "bg-[#1B4332] text-white ring-[#1B4332]" : "bg-white ring-[#1B4332]/10 hover:ring-[#2D6A4F]/40"}`}>
             <span className={`grid h-11 w-11 place-items-center rounded-2xl ${selectedService === s.id ? "bg-white/15 text-white" : "bg-[#1B4332]/8 text-[#1B4332]"}`}>
@@ -245,21 +289,44 @@ export function CustomerHome({
       <div className="mt-6 overflow-hidden rounded-[20px] bg-gradient-to-r from-[#1B4332] to-[#2D6A4F] p-5 text-white sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="flex items-center gap-2 text-[13px] font-extrabold text-[#52B788]"><span className="relative flex h-2.5 w-2.5"><span className="absolute h-full w-full animate-ping rounded-full bg-[#52B788]" /><span className="h-2.5 w-2.5 rounded-full bg-[#52B788]" /></span> WORKER FIRST • {workers.filter((w) => w.availableNow).length} ONLINE NEAR YOU</p>
-            <h3 className="font-display mt-1.5 text-[22px] font-black sm:text-[26px]">{lang === "hi" ? "अभी उपलब्ध — तुरंत बुक करें" : "Available now — book instantly"}</h3>
+            <p className="flex items-center gap-2 text-[13px] font-extrabold text-[#52B788]">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="absolute h-full w-full animate-ping rounded-full bg-[#52B788]" />
+                <span className="h-2.5 w-2.5 rounded-full bg-[#52B788]" />
+              </span>
+              WORKER FIRST • {workersList.filter((w) => w.availableNow).length} ONLINE IN YOUR AREA
+            </p>
+            <h3 className="font-display mt-1.5 text-[22px] font-black sm:text-[26px]">
+              {lang === "hi" ? "अभी उपलब्ध — तुरंत बुक करें" : "Available now — book instantly"}
+            </h3>
           </div>
-          <button onClick={() => { setFilter("Available now"); }} className="rounded-full bg-white px-5 py-2.5 text-[13px] font-extrabold text-[#1B4332] transition hover:bg-[#F4A261] hover:text-white">Show now →</button>
-        </div>
-        <div className="no-scrollbar -mx-5 mt-4 flex gap-3 overflow-x-auto px-5 pb-1 sm:mx-0 sm:px-0">
-          {workers.filter((w) => w.availableNow).slice(0, 5).map((w) => (
-            <button key={w.id} onClick={() => { setSelectedWorker(w.id); go("worker-profile", w.id); }}
-              className="flex shrink-0 items-center gap-2.5 rounded-2xl bg-white/10 p-2 pr-4 ring-1 ring-white/15 backdrop-blur transition hover:bg-white/20">
-              <img src={w.photo} alt={w.name} className="h-11 w-11 rounded-xl object-cover" />
-              <span className="text-left"><span className="block text-[12.5px] font-extrabold">{w.name.split(" ")[0]} • {w.service}</span>
-                <span className="block text-[11px] font-semibold text-white/70">₹{w.price} • {w.eta} • ◆{w.trustDNA ?? "N/A"}</span></span>
+          {workersList.filter((w) => w.availableNow).length > 0 && (
+            <button onClick={() => { setFilter("Available now"); }} className="rounded-full bg-white px-5 py-2.5 text-[13px] font-extrabold text-[#1B4332] transition hover:bg-[#F4A261] hover:text-white">
+              Show now →
             </button>
-          ))}
+          )}
         </div>
+
+        {workersList.filter((w) => w.availableNow).length > 0 ? (
+          <div className="no-scrollbar -mx-5 mt-4 flex gap-3 overflow-x-auto px-5 pb-1 sm:mx-0 sm:px-0">
+            {workersList.filter((w) => w.availableNow).slice(0, 5).map((w) => (
+              <button key={w.id} onClick={() => { setSelectedWorker(w.id); go("worker-profile", w.id); }}
+                className="flex shrink-0 items-center gap-2.5 rounded-2xl bg-white/10 p-2 pr-4 ring-1 ring-white/15 backdrop-blur transition hover:bg-white/20">
+                <img src={w.photo} alt={w.name} className="h-11 w-11 rounded-xl object-cover" />
+                <span className="text-left">
+                  <span className="block text-[12.5px] font-extrabold">{w.name.split(" ")[0]} • {w.service}</span>
+                  <span className="block text-[11px] font-semibold text-white/70">₹{w.price} • {w.eta} • ◆{w.trustDNA != null ? w.trustDNA : "Not enough data"}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 rounded-xl bg-black/20 p-3 text-[12.5px] font-semibold text-white/80">
+            {lang === "hi"
+              ? "फ़िलहाल कोई कारीगर तुरंत उपलब्ध (Online) नहीं है। आप बाद के लिए शेड्यूल कर सकते हैं या सेवा सूची ब्राउज़ कर सकते हैं।"
+              : "No verified workers are currently online for instant dispatch. Schedule an appointment or browse all service categories."}
+          </p>
+        )}
       </div>
 
       {/* nearby */}
@@ -275,10 +342,53 @@ export function CustomerHome({
           <MapIcon className="h-3.5 w-3.5" /> Map & all ({nearby.length})
         </button>
       </div>
+
       {loading ? (
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{[1, 2, 3].map((i) => <SkeletonCard key={i} />)}</div>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => <SkeletonCard key={i} />)}
+        </div>
+      ) : workersError ? (
+        <div className="mt-4 rounded-2xl bg-[#FFEBEE] p-5 ring-1 ring-[#EF5350]/30 text-center">
+          <AlertCircle className="h-6 w-6 text-[#C62828] mx-auto mb-2" />
+          <p className="text-[14.5px] font-extrabold text-[#C62828]">{workersError}</p>
+          <p className="mt-1 text-xs font-semibold text-[#4A4A4A]">Unable to retrieve verified workers from the database.</p>
+          <button onClick={loadWorkers} className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#1B4332] px-4 py-2 text-xs font-extrabold text-white">
+            <RefreshCw className="h-3.5 w-3.5" /> Retry
+          </button>
+        </div>
       ) : nearby.length === 0 ? (
-        <div className="mt-4"><EmptyState title={lang === "hi" ? "कोई कारीगर नहीं मिला" : "No workers found"} sub="Try a different service or clear your search — new workers join daily." action={<button onClick={() => { setQ(""); setSelectedService("All"); setFilter("All"); }} className="rounded-full bg-[#1B4332] px-5 py-2.5 text-[13px] font-bold text-white">Clear filters</button>} /></div>
+        <div className="mt-4">
+          <EmptyState
+            title={lang === "hi" ? "कोई सत्यापित कारीगर नहीं मिला" : "No verified workers available yet"}
+            sub={
+              q
+                ? `No verified workers match "${q}". Try clearing your search term.`
+                : selectedService !== "All"
+                ? `Currently no verified workers are registered under ${displayServices.find(s => s.id === selectedService)?.en || selectedService}. New verified providers join daily.`
+                : "No verified workers are currently discoverable in this area. Verified providers will appear here as their identity and trade checks are completed."
+            }
+            action={
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {selectedService !== "All" && (
+                  <button onClick={() => setSelectedService("All")} className="rounded-full bg-[#1B4332] px-4 py-2 text-[12.5px] font-bold text-white transition hover:bg-[#2D6A4F]">
+                    {lang === "hi" ? "सभी सेवाएँ देखें" : "Show all services"}
+                  </button>
+                )}
+                {q && (
+                  <button onClick={() => { setQ(""); if (setSearchQuery) setSearchQuery(""); }} className="rounded-full bg-[#E76F51] px-4 py-2 text-[12.5px] font-bold text-white transition hover:bg-[#c65a3a]">
+                    {lang === "hi" ? "खोज साफ़ करें" : "Clear search"}
+                  </button>
+                )}
+                <button
+                  onClick={() => { setQ(""); setSelectedService("All"); setFilter("All"); if (setSearchQuery) setSearchQuery(""); }}
+                  className="rounded-full bg-[#FAF9F6] px-4 py-2 text-[12.5px] font-bold text-[#1B4332] ring-1 ring-[#1B4332]/20 hover:bg-[#1B4332]/5"
+                >
+                  {lang === "hi" ? "फ़िल्टर रीसेट करें" : "Reset all filters"}
+                </button>
+              </div>
+            }
+          />
+        </div>
       ) : (
         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {nearby.slice(0, 6).map((w) => (
@@ -286,6 +396,7 @@ export function CustomerHome({
           ))}
         </div>
       )}
+
 
       <CustomerBottomNav page="customer-home" go={go} onBook={() => go("booking", selectedWorker || "ramesh")} />
     </div>
@@ -334,27 +445,63 @@ export function WorkerListing({
   const [minTrust, setMinTrust] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
 
-  const list = useMemo(() => {
-    let l = [...workers];
-    if (selectedService !== "All") l = l.filter((w) => w.serviceId === selectedService);
-    if (searchQuery) {
-      const sq = searchQuery.toLowerCase().trim();
-      l = l.filter((w) =>
-        (w.name + " " + w.hindiName + " " + w.service + " " + w.skills.join(" ") + " " + w.area + " " + w.about)
-          .toLowerCase()
-          .includes(sq)
-      );
-    }
-    l = l.filter((w) => w.price <= maxPrice && (w.trustDNA ?? 0) >= minTrust);
-    if (onlyNow) l = l.filter((w) => w.availableNow);
-    if (sort === "Price: low to high") l.sort((a, b) => a.price - b.price);
-    if (sort === "Highest rated") l.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
-    if (sort === "Nearest") l.sort((a, b) => a.distanceKm - b.distanceKm);
-    if (sort === "TrustDNA") l.sort((a, b) => (b.trustDNA ?? 0) - (a.trustDNA ?? 0));
-    return l;
-  }, [selectedService, searchQuery, sort, maxPrice, onlyNow, minTrust]);
+  // 1. Service Catalog from Supabase
+  const [catalog, setCatalog] = useState<MarketplaceService[]>([]);
+  useEffect(() => {
+    let active = true;
+    fetchServices().then((res) => {
+      if (!active) return;
+      if (res.data && res.data.length > 0) setCatalog(res.data);
+    });
+    return () => { active = false; };
+  }, []);
 
-  const activeServiceObj = services.find((s) => s.id === selectedService);
+  const displayServices = catalog.length > 0
+    ? catalog.map((s) => ({
+        id: s.id,
+        en: s.name_en,
+        hi: s.name_hi,
+        icon: s.icon,
+        desc: s.description,
+        basePrice: Number(s.base_price),
+      }))
+    : services;
+
+  // 2. Real workers from marketplace_workers
+  const [workersList, setWorkersList] = useState<Worker[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadWorkers = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    const res = await fetchMarketplaceWorkers({
+      serviceId: selectedService,
+      searchQuery,
+      location,
+      onlyAvailableNow: onlyNow,
+      maxPrice,
+      minTrust,
+      sortBy: sort as any,
+    });
+
+    if (res.error) {
+      setError(res.error);
+      setWorkersList([]);
+    } else {
+      const normalized = res.data.map((w) => normalizeWorker(w, catalog));
+      setWorkersList(normalized);
+    }
+    setLoading(false);
+  }, [selectedService, searchQuery, location, onlyNow, maxPrice, minTrust, sort, catalog]);
+
+  useEffect(() => {
+    loadWorkers();
+  }, [loadWorkers]);
+
+  const list = workersList;
+  const activeServiceObj = displayServices.find((s) => s.id === selectedService);
 
   return (
     <div className="page-enter mx-auto max-w-6xl px-4 pb-28 pt-5 sm:px-6 md:pb-16">
@@ -362,7 +509,7 @@ export function WorkerListing({
       <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-[24px] font-black tracking-tight sm:text-[30px]">
-            {selectedService === "All" ? (lang === "hi" ? "सभी कारीगर" : "All verified workers") : activeServiceObj?.[lang] || selectedService}{" "}
+            {selectedService === "All" ? (lang === "hi" ? "सभी सत्यापित कारीगर" : "All verified workers") : (activeServiceObj ? (lang === "hi" ? activeServiceObj.hi : activeServiceObj.en) : selectedService)}{" "}
             <span className="text-[#8a8a8a] text-[16px] font-bold">({list.length})</span>
           </h1>
           {location && <p className="text-xs font-bold text-[#4A4A4A] mt-0.5"><MapPin className="inline h-3 w-3 text-[#E76F51] mr-1" />{location}</p>}
@@ -396,7 +543,7 @@ export function WorkerListing({
 
       {/* service pills */}
       <div className="no-scrollbar -mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1">
-        {[{ id: "All", en: "All services", hi: "सभी" }, ...services].map((s) => (
+        {[{ id: "All", en: "All services", hi: "सभी" }, ...displayServices].map((s) => (
           <button key={s.id} onClick={() => setSelectedService(s.id)}
             className={`shrink-0 rounded-full px-4 py-2 text-[12.5px] font-extrabold ring-1 transition active:scale-95 ${selectedService === s.id ? "bg-[#1B4332] text-white ring-[#1B4332]" : "bg-white ring-[#1B4332]/12"}`}>
             {lang === "hi" ? (s as any).hi : (s as any).en}
@@ -431,7 +578,16 @@ export function WorkerListing({
         </div>
       )}
 
-      {view === "map" ? (
+      {error ? (
+        <div className="mt-4 rounded-2xl bg-[#FFEBEE] p-5 ring-1 ring-[#EF5350]/30 text-center">
+          <AlertCircle className="h-6 w-6 text-[#C62828] mx-auto mb-2" />
+          <p className="text-[14.5px] font-extrabold text-[#C62828]">{error}</p>
+          <p className="mt-1 text-xs font-semibold text-[#4A4A4A]">Could not query marketplace_workers view.</p>
+          <button onClick={loadWorkers} className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#1B4332] px-4 py-2 text-xs font-extrabold text-white">
+            <RefreshCw className="h-3.5 w-3.5" /> Retry
+          </button>
+        </div>
+      ) : view === "map" ? (
         <div className="animate-fade-in mt-4 overflow-hidden rounded-[20px] ring-1 ring-[#1B4332]/12 card-shadow">
           {/* stylized map */}
           <div className="dot-grid relative h-[380px] bg-[#EDE8DA] sm:h-[440px]">
@@ -462,14 +618,14 @@ export function WorkerListing({
             {list.length === 0 ? (
               <div className="absolute inset-0 grid place-items-center bg-[#EDE8DA]/80 backdrop-blur-sm p-4 text-center">
                 <div className="rounded-2xl bg-white p-5 shadow-lg max-w-sm">
-                  <p className="text-[15px] font-extrabold text-[#1A1A1A]">No workers found on map</p>
+                  <p className="text-[15px] font-extrabold text-[#1A1A1A]">No verified workers found on map</p>
                   <p className="mt-1 text-xs font-medium text-[#4A4A4A]">No verified workers match your selected filters in this area.</p>
                   <button onClick={() => { setMaxPrice(900); setMinTrust(0); setOnlyNow(false); setSelectedService("All"); if (setSearchQuery) setSearchQuery(""); }} className="mt-3 rounded-full bg-[#1B4332] px-4 py-2 text-xs font-bold text-white">Reset filters</button>
                 </div>
               </div>
             ) : (
               <div className="absolute bottom-3 left-3 rounded-2xl bg-white/95 px-3.5 py-2.5 text-[11.5px] font-bold text-[#1A1A1A] backdrop-blur card-shadow">
-                🗺️ {list.length} workers within 3 km • Tap a pin to view profile
+                🗺️ {list.length} verified workers within 3 km • Tap a pin to view profile
               </div>
             )}
           </div>
@@ -485,16 +641,20 @@ export function WorkerListing({
       ) : (
         <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_340px]">
           <div className="grid content-start gap-4 sm:grid-cols-2">
-            {list.length === 0 ? (
+            {loading ? (
+              <div className="sm:col-span-2 grid gap-4 sm:grid-cols-2">
+                {[1, 2, 3, 4].map((i) => <SkeletonCard key={i} />)}
+              </div>
+            ) : list.length === 0 ? (
               <div className="sm:col-span-2">
                 <EmptyState
-                  title={lang === "hi" ? "कोई कारीगर नहीं मिला" : "No workers found for this search"}
+                  title={lang === "hi" ? "कोई सत्यापित कारीगर नहीं मिला" : "No verified workers found for this search"}
                   sub={
                     searchQuery
                       ? `No verified workers match "${searchQuery}". Try a different keyword or view all services.`
                       : selectedService !== "All"
-                      ? `Currently no workers match the selected filters under ${activeServiceObj?.[lang] || selectedService}.`
-                      : "Loosen the price, availability, or TrustDNA filter to see more verified workers nearby."
+                      ? `Currently no verified workers match the selected filters under ${activeServiceObj?.en || selectedService}.`
+                      : "No verified workers match the selected filters in this area. Loosen filters to see more results."
                   }
                   action={
                     <div className="flex flex-wrap items-center justify-center gap-2">
@@ -589,7 +749,32 @@ export function WorkerProfile({
 }: {
   go: (p: Page, wid?: string) => void; lang: "en" | "hi"; workerId: string; setSelectedWorker: (s: string) => void;
 }) {
-  const w = workers.find((x) => x.id === workerId) ?? workers[0];
+  const fallback = workers.find((x) => x.id === workerId) ?? workers[0];
+  const [worker, setWorker] = useState<Worker>(fallback);
+  const [profileLoading, setProfileLoading] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadWorker() {
+      // If it is a real database worker or not in local dummy list
+      const staticFound = workers.find((x) => x.id === workerId);
+      if (staticFound) {
+        setWorker(staticFound);
+      } else if (workerId) {
+        setProfileLoading(true);
+        const { data: dbWorker } = await fetchWorkerById(workerId);
+        if (dbWorker && isMounted) {
+          const { data: servicesList } = await fetchServices();
+          setWorker(normalizeWorker(dbWorker, servicesList));
+        }
+        if (isMounted) setProfileLoading(false);
+      }
+    }
+    loadWorker();
+    return () => { isMounted = false; };
+  }, [workerId]);
+
+  const w = worker;
   const [tab, setTab] = useState<"about" | "reviews" | "rates">("about");
   const [showDNA, setShowDNA] = useState(true);
   const [showCallModal, setShowCallModal] = useState(false);

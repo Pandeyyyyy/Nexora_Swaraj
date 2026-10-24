@@ -2,6 +2,8 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import type { User, Session } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { UserProfile, WorkerProfile, UserRole, SignUpData } from '../lib/authTypes';
+import { updateWorkerAvailability } from '../lib/marketplace';
+
 
 interface AuthContextType {
   user: User | null;
@@ -16,7 +18,9 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string; role?: UserRole }>;
   signOut: () => Promise<{ success: boolean; error?: string }>;
   refreshProfile: () => Promise<void>;
+  updateAvailability: (isOnline: boolean, isAvailableNow?: boolean) => Promise<{ success: boolean; error?: string }>;
 }
+
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -258,6 +262,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { success: true };
   }, [configured]);
 
+  const updateAvailability = useCallback(async (isOnline: boolean, isAvailableNow?: boolean) => {
+    if (!user) {
+      return { success: false, error: 'User is not authenticated' };
+    }
+    if (profile?.role !== 'worker') {
+      return { success: false, error: 'Only registered workers can update operational availability' };
+    }
+
+    try {
+      const res = await updateWorkerAvailability(user.id, isOnline, isAvailableNow);
+      if (!res.success) {
+        return { success: false, error: res.error || 'Failed to update availability' };
+      }
+
+      setWorkerProfile((prev) => prev ? {
+        ...prev,
+        is_online: isOnline,
+        is_available_now: isAvailableNow !== undefined ? isAvailableNow : isOnline,
+      } : null);
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Unexpected error updating availability' };
+    }
+  }, [user, profile]);
+
   const role = profile?.role ?? null;
   const isAuthenticated = Boolean(user && session);
 
@@ -274,6 +304,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signIn,
     signOut,
     refreshProfile,
+    updateAvailability,
   }), [
     user,
     session,
@@ -287,7 +318,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signIn,
     signOut,
     refreshProfile,
+    updateAvailability,
   ]);
+
 
   return (
     <AuthContext.Provider value={contextValue}>

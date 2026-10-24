@@ -1,17 +1,23 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   BadgeCheck, Camera, CheckCircle2, ChevronLeft, ChevronRight,
   ImagePlus, MapPin, MessageCircle, Navigation, Phone, ShieldCheck, Star,
-  TrendingUp, Users, Wallet, Zap, HeartHandshake, Briefcase, LogOut, FileCheck,
+  TrendingUp, Users, Wallet, Zap, HeartHandshake, Briefcase, LogOut, FileCheck, Loader2, AlertCircle
 } from "lucide-react";
 import { workers } from "../data";
 import { Stars, TrustRing, WorkerBottomNav } from "../components/shared";
 import type { Page } from "../components/shared";
+import { useAuth } from "../contexts/AuthContext";
 
 /* ================= WORKER DASHBOARD ================= */
 export function WorkerDashboard({ go, lang }: { go: (p: Page, w?: string) => void; lang: "en" | "hi" }) {
-  const me = workers[0];
-  const [online, setOnline] = useState(true);
+  const { user, profile, workerProfile, updateAvailability, isAuthenticated } = useAuth();
+  const isWorker = profile?.role === "worker";
+
+  const isOnline = workerProfile?.is_online ?? false;
+  const [updatingOnline, setUpdatingOnline] = useState(false);
+  const [errorNotice, setErrorNotice] = useState<string | null>(null);
+
   const [reqs, setReqs] = useState([
     { id: 1, name: "Priya Sharma", job: "Kitchen tap leaking", price: 450, dist: "0.6 km", time: "ASAP", status: "new" },
     { id: 2, name: "Amit Verma", job: "Bathroom flush repair", price: 380, dist: "1.2 km", time: "Today 4 PM", status: "new" },
@@ -19,34 +25,101 @@ export function WorkerDashboard({ go, lang }: { go: (p: Page, w?: string) => voi
   ]);
   const [toast, setToast] = useState("");
 
+  const handleToggleOnline = async () => {
+    if (updatingOnline) return;
+
+    if (!isAuthenticated || !isWorker) {
+      setToast(lang === "hi" ? "लाइव उपलब्धता टॉगल करने के लिए कृपया कारीगर खाते से लॉग इन करें" : "Please log in as a registered worker to toggle live availability.");
+      setTimeout(() => setToast(""), 3200);
+      return;
+    }
+
+    setUpdatingOnline(true);
+    setErrorNotice(null);
+    const targetStatus = !isOnline;
+
+    const res = await updateAvailability(targetStatus);
+    setUpdatingOnline(false);
+
+    if (!res.success) {
+      setErrorNotice(res.error || "Failed to persist availability status");
+      setToast(lang === "hi" ? "उपलब्धता अपडेट करने में विफल" : "Failed to update availability in database");
+    } else {
+      setToast(targetStatus
+        ? (lang === "hi" ? "आप अब ऑनलाइन हैं! काम प्राप्त कर सकते हैं 🎉" : "You are now ONLINE! Ready to receive jobs 🎉")
+        : (lang === "hi" ? "आप अब ऑफ़लाइन हैं" : "You are now OFFLINE"));
+    }
+    setTimeout(() => setToast(""), 3000);
+  };
+
   const act = (id: number, a: string) => {
     setReqs((r) => r.filter((x) => x.id !== id));
     setToast(a === "accept" ? "Job accepted! Customer notified 🎉" : a === "counter" ? "Counter-offer sent via FairFare" : "Request declined politely");
     setTimeout(() => setToast(""), 2600);
   };
 
+  const workerDisplayName = profile?.full_name || (isWorker ? "Worker" : "Ramesh Kumar");
+  const isVerified = workerProfile?.verification_status === "verified";
+  const ratingText = workerProfile?.rating != null ? workerProfile.rating.toFixed(1) : "New";
+  const trustDNAText = workerProfile?.trust_dna != null ? `${workerProfile.trust_dna} TrustDNA` : "Not enough data";
+  const jobsCount = workerProfile?.total_jobs ?? 0;
+  const avatarUrl = profile?.avatar_url || "https://images.pexels.com/photos/9271168/pexels-photo-9271168.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940";
+
   return (
     <div className="page-enter mx-auto max-w-6xl px-4 pb-28 pt-5 sm:px-6 md:pb-16">
+      {/* Toast Feedback */}
+      {toast && (
+        <div className="animate-fade-in fixed top-20 left-1/2 -translate-x-1/2 z-50 rounded-2xl bg-[#122b21] px-5 py-3 text-[13px] font-extrabold text-white shadow-2xl border border-[#52B788]/30">
+          {toast}
+        </div>
+      )}
+
       {/* header + online toggle */}
       <div className="flex flex-wrap items-center gap-3 rounded-[22px] bg-[#122b21] p-4 text-white card-shadow-lg sm:p-5">
-        <img src={me.photo} alt={me.name} className="h-14 w-14 rounded-2xl object-cover ring-2 ring-[#52B788]" />
+        <img src={avatarUrl} alt={workerDisplayName} className="h-14 w-14 rounded-2xl object-cover ring-2 ring-[#52B788]" />
         <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-1.5 text-[16px] font-extrabold">{lang === "hi" ? "नमस्ते, रमेश 🙏" : "Namaste, Ramesh 🙏"} <BadgeCheck className="h-4 w-4 fill-[#52B788] text-white" /></p>
-          <p className="flex items-center gap-2 text-[12px] font-semibold text-white/65"><Stars rating={4.8} /> 4.8 • ◆ 92 TrustDNA • 148 jobs</p>
+          <p className="flex items-center gap-1.5 text-[16px] font-extrabold">
+            {lang === "hi" ? `नमस्ते, ${workerProfile?.hindi_name || workerDisplayName} 🙏` : `Namaste, ${workerDisplayName} 🙏`}
+            {isVerified && <BadgeCheck className="h-4 w-4 fill-[#52B788] text-white" title="Verified Worker" />}
+          </p>
+          <p className="flex items-center gap-2 text-[12px] font-semibold text-white/65">
+            {workerProfile?.rating != null && <Stars rating={workerProfile.rating} />}
+            {ratingText} • ◆ {trustDNAText} • {jobsCount} jobs
+          </p>
         </div>
-        <button onClick={() => setOnline(!online)} aria-label="Toggle online"
-          className={`flex items-center gap-3 rounded-full p-1.5 pr-2 transition ${online ? "bg-[#2D6A4F]" : "bg-white/10"}`}>
-          <span className={`px-2.5 text-[12px] font-extrabold ${online ? "text-white" : "text-white/50"}`}>{online ? "● ONLINE" : "○ OFFLINE"}</span>
-          <span className={`relative h-9 w-[68px] rounded-full transition ${online ? "bg-white/25" : "bg-white/10"}`}>
-            <span className={`absolute top-1 h-7 w-7 rounded-full bg-white shadow transition-all ${online ? "left-[36px]" : "left-1"}`} />
+
+        {/* Database-Backed Online Toggle */}
+        <button
+          onClick={handleToggleOnline}
+          disabled={updatingOnline}
+          aria-label="Toggle online availability"
+          className={`flex items-center gap-3 rounded-full p-1.5 pr-2 transition ${isOnline ? "bg-[#2D6A4F]" : "bg-white/10"} ${updatingOnline ? "opacity-60 cursor-not-allowed" : "hover:ring-1 hover:ring-white/30"}`}
+        >
+          <span className={`flex items-center gap-1.5 px-2.5 text-[12px] font-extrabold ${isOnline ? "text-white" : "text-white/50"}`}>
+            {updatingOnline && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {isOnline ? "● ONLINE" : "○ OFFLINE"}
+          </span>
+          <span className={`relative h-9 w-[68px] rounded-full transition ${isOnline ? "bg-white/25" : "bg-white/10"}`}>
+            <span className={`absolute top-1 h-7 w-7 rounded-full bg-white shadow transition-all ${isOnline ? "left-[36px]" : "left-1"}`} />
           </span>
         </button>
       </div>
-      {!online && (
-        <div className="animate-fade-in mt-3 rounded-2xl bg-[#FFF1E8] px-4 py-3 text-center text-[13px] font-bold text-[#9c3d1e] ring-1 ring-[#E76F51]/25">
-          You're offline — customers can't see you. Go online to receive jobs.
+
+      {errorNotice && (
+        <div className="animate-fade-in mt-3 flex items-center gap-2 rounded-2xl bg-[#FFEBEE] px-4 py-2.5 text-[12.5px] font-bold text-[#C62828] ring-1 ring-[#EF5350]/30">
+          <AlertCircle className="h-4 w-4 shrink-0 text-[#C62828]" />
+          <span>{errorNotice}</span>
         </div>
       )}
+
+      {!isOnline && (
+        <div className="animate-fade-in mt-3 rounded-2xl bg-[#FFF1E8] px-4 py-3 text-center text-[13px] font-bold text-[#9c3d1e] ring-1 ring-[#E76F51]/25">
+          {lang === "hi"
+            ? "आप ऑफ़लाइन हैं — ग्राहक आपको खोज नहीं सकते। नए काम प्राप्त करने के लिए ऑनलाइन जाएं।"
+            : "You're offline — customers can't discover you. Go online to receive jobs."}
+        </div>
+      )}
+
 
       {/* earnings strip */}
       <div className="mt-4 grid grid-cols-3 gap-3">
