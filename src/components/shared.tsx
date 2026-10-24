@@ -2,12 +2,13 @@ import {
   BadgeCheck, Bell, Brush, ChefHat, ChevronRight, Hammer, Leaf, MapPin, Mic,
   Refrigerator, Search, ShieldCheck, Sparkles, Star, Wrench, Zap, Globe, Menu, X,
   Clock, Navigation, MessageCircle, Phone, Home, CalendarCheck, User, LayoutGrid,
-  Wallet, Briefcase, BarChart3, HeartHandshake, Languages, Database, CheckCircle2, AlertCircle, RefreshCw
+  Wallet, Briefcase, BarChart3, HeartHandshake, Languages, Database, CheckCircle2, AlertCircle, RefreshCw, LogOut
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import { workers } from "../data";
 import { checkSupabaseConnection, type BackendHealthReport } from "../lib/supabaseHealth";
+import { useAuth } from "../contexts/AuthContext";
 
 /* ---------- Brand ---------- */
 export function Logo({ dark = false, compact = false }: { dark?: boolean; compact?: boolean }) {
@@ -47,13 +48,19 @@ export type Page =
   | "worker-jobs" | "worker-earnings" | "admin" | "impact";
 
 export function TopNav({
-  page, go, lang, setLang, role, location, setLocation,
+  page, go, lang, setLang, role: propRole, location, setLocation,
 }: {
   page: Page; go: (p: Page, wid?: string) => void; lang: "en" | "hi"; setLang: (l: "en" | "hi") => void;
   role: string | null; location: string; setLocation?: (loc: string) => void;
 }) {
+  const { user, profile, role: authRole, isAuthenticated, signOut } = useAuth();
+  const effectiveRole = authRole || propRole;
+
   const [open, setOpen] = useState(false);
   const [locOpen, setLocOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
   const isApp = !["landing", "auth", "impact"].includes(page);
   const locations = [
     "Laxmi Nagar, Delhi",
@@ -62,6 +69,27 @@ export function TopNav({
     "Nirman Vihar, Delhi",
     "Akshardham, Delhi",
   ];
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleLogout = async () => {
+    setUserMenuOpen(false);
+    setOpen(false);
+    await signOut();
+    go("landing");
+  };
+
+  const displayName = profile?.full_name || user?.email?.split("@")[0] || (effectiveRole ? effectiveRole.toUpperCase() : "User");
+  const avatarLetter = (displayName || "U")[0].toUpperCase();
 
   return (
     <header className="sticky top-0 z-40 border-b border-[#1B4332]/10 bg-[#FAF9F6]/90 backdrop-blur-xl">
@@ -100,49 +128,181 @@ export function TopNav({
           )}
         </div>
 
+        {/* Dynamic Role-Based Navigation */}
         <nav className="hidden items-center gap-1 text-[14px] font-semibold text-[#4A4A4A] lg:flex">
-          <NavLink label={lang === "hi" ? "सेवाएँ खोजें" : "Find Work"} onClick={() => go("customer-home")} />
-          <NavLink label={lang === "hi" ? "कारीगर बनें" : "Become a Worker"} onClick={() => go("worker-onboarding")} />
-          <NavLink label={lang === "hi" ? "प्रभाव" : "Impact"} onClick={() => go("impact")} />
-          <NavLink label="Admin" onClick={() => go("admin")} />
+          {effectiveRole === "worker" ? (
+            <>
+              <NavLink label={lang === "hi" ? "कारीगर डैशबोर्ड" : "Dashboard"} onClick={() => go("worker-dashboard")} />
+              <NavLink label={lang === "hi" ? "मेरे काम" : "My Jobs"} onClick={() => go("worker-jobs")} />
+              <NavLink label={lang === "hi" ? "कमाई" : "Earnings"} onClick={() => go("worker-earnings")} />
+              <NavLink label={lang === "hi" ? "प्रभाव" : "Impact"} onClick={() => go("impact")} />
+            </>
+          ) : effectiveRole === "admin" ? (
+            <>
+              <NavLink label={lang === "hi" ? "सेवाएँ खोजें" : "Customer View"} onClick={() => go("customer-home")} />
+              <NavLink label="Admin Console" onClick={() => go("admin")} />
+              <NavLink label={lang === "hi" ? "प्रभाव" : "Impact"} onClick={() => go("impact")} />
+            </>
+          ) : (
+            <>
+              <NavLink label={lang === "hi" ? "सेवाएँ खोजें" : "Find Work"} onClick={() => go("customer-home")} />
+              <NavLink label={lang === "hi" ? "कारीगर बनें" : "Become a Worker"} onClick={() => go("worker-onboarding")} />
+              <NavLink label={lang === "hi" ? "प्रभाव" : "Impact"} onClick={() => go("impact")} />
+            </>
+          )}
         </nav>
 
         <div className="flex items-center gap-2">
           <div className="hidden sm:block"><LangToggle lang={lang} setLang={setLang} /></div>
-          {role ? (
-            <button
-              onClick={() => go(role === "worker" ? "worker-dashboard" : role === "admin" ? "admin" : "customer-home")}
-              className="hidden items-center gap-2 rounded-full bg-[#1B4332] py-2 pl-2 pr-4 text-[13px] font-bold text-white transition hover:bg-[#2D6A4F] active:scale-95 sm:flex"
-            >
-              <span className="grid h-7 w-7 place-items-center rounded-full bg-white/15 text-xs font-extrabold">
-                {role === "worker" ? "R" : role === "admin" ? "A" : "P"}
-              </span>
-              {role === "worker" ? (lang === "hi" ? "डैशबोर्ड" : "Dashboard") : role === "admin" ? "Admin" : (lang === "hi" ? "मेरे बुकिंग" : "My bookings")}
-            </button>
+
+          {/* User Account / Role / Sign-in */}
+          {isAuthenticated || effectiveRole ? (
+            <div className="relative" ref={userMenuRef}>
+              <button
+                onClick={() => setUserMenuOpen(!userMenuOpen)}
+                className="hidden items-center gap-2 rounded-full bg-[#1B4332] py-1.5 pl-2 pr-3.5 text-[13px] font-bold text-white transition hover:bg-[#2D6A4F] active:scale-95 sm:flex"
+              >
+                <span className="grid h-7 w-7 place-items-center rounded-full bg-white/20 text-xs font-black">
+                  {avatarLetter}
+                </span>
+                <span className="max-w-[120px] truncate text-left">{displayName}</span>
+                <span className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-[#F4A261]">
+                  {effectiveRole || "user"}
+                </span>
+              </button>
+
+              {userMenuOpen && (
+                <div className="animate-fade-in absolute right-0 top-12 z-50 w-60 rounded-2xl bg-white p-2.5 shadow-2xl ring-1 ring-[#1B4332]/10">
+                  <div className="border-b border-[#1B4332]/8 px-3 py-2">
+                    <p className="text-[13.5px] font-extrabold text-[#1A1A1A] truncate">{displayName}</p>
+                    <p className="text-[11.5px] font-medium text-[#4A4A4A] truncate">{user?.email || "Authenticated"}</p>
+                    <div className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-[#1B4332]/10 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-[#1B4332]">
+                      <ShieldCheck className="h-3 w-3" />
+                      Role: {effectiveRole || "customer"}
+                    </div>
+                  </div>
+
+                  <div className="mt-1 space-y-1">
+                    <button
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        if (effectiveRole === "worker") go("worker-dashboard");
+                        else if (effectiveRole === "admin") go("admin");
+                        else go("customer-home");
+                      }}
+                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-[12.5px] font-bold text-[#1A1A1A] transition hover:bg-[#FAF9F6]"
+                    >
+                      <User className="h-4 w-4 text-[#2D6A4F]" />
+                      {effectiveRole === "worker"
+                        ? (lang === "hi" ? "कारीगर डैशबोर्ड" : "Worker Dashboard")
+                        : effectiveRole === "admin"
+                        ? "Admin Console"
+                        : (lang === "hi" ? "मेरे बुकिंग" : "My Bookings")}
+                    </button>
+
+                    <button
+                      onClick={handleLogout}
+                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-[12.5px] font-bold text-[#C62828] transition hover:bg-[#FFEBEE]"
+                    >
+                      <LogOut className="h-4 w-4 text-[#C62828]" />
+                      {lang === "hi" ? "लॉग आउट करें" : "Log out"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           ) : (
             <>
-              <button onClick={() => go("auth")} className="hidden rounded-full px-4 py-2 text-[13px] font-bold text-[#1B4332] hover:bg-[#1B4332]/5 sm:block">
+              <button
+                onClick={() => go("auth")}
+                className="hidden rounded-full px-4 py-2 text-[13px] font-bold text-[#1B4332] hover:bg-[#1B4332]/5 sm:block"
+              >
                 {lang === "hi" ? "लॉगिन" : "Log in"}
               </button>
-              <button onClick={() => go("auth")} className="rounded-full bg-[#1B4332] px-4 py-2.5 text-[13px] font-bold text-white transition hover:bg-[#2D6A4F] active:scale-95">
+              <button
+                onClick={() => go("auth")}
+                className="rounded-full bg-[#1B4332] px-4 py-2.5 text-[13px] font-bold text-white transition hover:bg-[#2D6A4F] active:scale-95"
+              >
                 {lang === "hi" ? "शुरू करें" : "Get started"}
               </button>
             </>
           )}
-          <button onClick={() => setOpen(!open)} className="grid h-10 w-10 place-items-center rounded-full bg-white ring-1 ring-[#1B4332]/10 lg:hidden" aria-label="Menu">
+
+          <button
+            onClick={() => setOpen(!open)}
+            className="grid h-10 w-10 place-items-center rounded-full bg-white ring-1 ring-[#1B4332]/10 lg:hidden"
+            aria-label="Menu"
+          >
             {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
         </div>
       </div>
+
+      {/* Mobile Drawer Menu */}
       {open && (
         <div className="animate-fade-in border-t border-[#1B4332]/10 bg-[#FAF9F6] px-4 pb-5 pt-3 lg:hidden">
+          {isAuthenticated && (
+            <div className="mb-3 flex items-center justify-between rounded-2xl bg-white p-3 ring-1 ring-[#1B4332]/10">
+              <div className="flex items-center gap-2.5">
+                <span className="grid h-8 w-8 place-items-center rounded-full bg-[#1B4332] text-xs font-black text-white">
+                  {avatarLetter}
+                </span>
+                <div>
+                  <p className="text-[13px] font-extrabold text-[#1A1A1A]">{displayName}</p>
+                  <p className="text-[11px] font-semibold text-[#2D6A4F] uppercase">{effectiveRole || "customer"}</p>
+                </div>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-1 rounded-xl bg-[#FFEBEE] px-2.5 py-1.5 text-[11px] font-extrabold text-[#C62828]"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                Logout
+              </button>
+            </div>
+          )}
+
           <div className="grid gap-1 text-[15px] font-semibold">
-            <MobileLink label={lang === "hi" ? "सेवाएँ खोजें" : "Find a worker"} onClick={() => { go("customer-home"); setOpen(false); }} />
-            <MobileLink label={lang === "hi" ? "कारीगर डैशबोर्ड" : "Worker dashboard"} onClick={() => { go("worker-dashboard"); setOpen(false); }} />
+            {effectiveRole === "worker" ? (
+              <>
+                <MobileLink label={lang === "hi" ? "कारीगर डैशबोर्ड" : "Worker dashboard"} onClick={() => { go("worker-dashboard"); setOpen(false); }} />
+                <MobileLink label={lang === "hi" ? "मेरे काम" : "My jobs"} onClick={() => { go("worker-jobs"); setOpen(false); }} />
+                <MobileLink label={lang === "hi" ? "कमाई" : "Worker earnings"} onClick={() => { go("worker-earnings"); setOpen(false); }} />
+              </>
+            ) : effectiveRole === "admin" ? (
+              <>
+                <MobileLink label="Admin Console" onClick={() => { go("admin"); setOpen(false); }} />
+                <MobileLink label={lang === "hi" ? "सेवाएँ खोजें" : "Customer view"} onClick={() => { go("customer-home"); setOpen(false); }} />
+              </>
+            ) : (
+              <>
+                <MobileLink label={lang === "hi" ? "सेवाएँ खोजें" : "Find a worker"} onClick={() => { go("customer-home"); setOpen(false); }} />
+                <MobileLink label={lang === "hi" ? "कारीगर बनें" : "Become a worker"} onClick={() => { go("worker-onboarding"); setOpen(false); }} />
+              </>
+            )}
+
             <MobileLink label={lang === "hi" ? "सामुदायिक प्रभाव" : "Community impact"} onClick={() => { go("impact"); setOpen(false); }} />
-            <MobileLink label="Admin" onClick={() => { go("admin"); setOpen(false); }} />
+
+            {!isAuthenticated && (
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => { go("auth"); setOpen(false); }}
+                  className="rounded-2xl border border-[#1B4332]/20 py-3 text-center text-[13px] font-extrabold text-[#1B4332]"
+                >
+                  {lang === "hi" ? "लॉगिन" : "Log in"}
+                </button>
+                <button
+                  onClick={() => { go("auth"); setOpen(false); }}
+                  className="rounded-2xl bg-[#1B4332] py-3 text-center text-[13px] font-extrabold text-white"
+                >
+                  {lang === "hi" ? "शुरू करें" : "Sign up"}
+                </button>
+              </div>
+            )}
+
             <div className="mt-2 flex gap-2 sm:hidden"><LangToggle lang={lang} setLang={setLang} /></div>
           </div>
+
           {isApp && (
             <div className="mt-3">
               <p className="flex items-center gap-1.5 text-xs font-semibold text-[#4A4A4A]"><MapPin className="h-3.5 w-3.5 text-[#E76F51]" />{location}</p>
@@ -164,12 +324,15 @@ export function TopNav({
     </header>
   );
 }
+
 function NavLink({ label, onClick }: { label: string; onClick: () => void }) {
   return <button onClick={onClick} className="rounded-full px-3.5 py-2 transition hover:bg-[#1B4332]/5 hover:text-[#1B4332]">{label}</button>;
 }
+
 function MobileLink({ label, onClick }: { label: string; onClick: () => void }) {
   return <button onClick={onClick} className="flex items-center justify-between rounded-2xl bg-white px-4 py-3.5 ring-1 ring-[#1B4332]/10">{label}<ChevronRight className="h-4 w-4 text-[#4A4A4A]" /></button>;
 }
+
 
 /* ---------- Service icon ---------- */
 export function ServiceIcon({ icon, className = "h-6 w-6" }: { icon: string; className?: string }) {

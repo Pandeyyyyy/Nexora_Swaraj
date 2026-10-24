@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from "react";
+import { HeartHandshake } from "lucide-react";
 import { TopNav, DemoBar, type Page } from "./components/shared";
 import Landing from "./pages/Landing";
 import { CustomerHome, WorkerListing, WorkerProfile } from "./pages/Customer";
 import { BookingFlow, Tracking, PaymentReview } from "./pages/Booking";
 import { WorkerDashboard, WorkerOnboarding, WorkerJobs, WorkerEarnings, Auth } from "./pages/Worker";
 import { Admin, Impact } from "./pages/AdminImpact";
+import { useAuth } from "./contexts/AuthContext";
 
 function getStoredState() {
   try {
@@ -36,6 +38,7 @@ function getValidWorkerId(val: unknown): string | null {
 }
 
 export default function App() {
+  const { user, profile, role: authRole, isLoading: authLoading, isAuthenticated } = useAuth();
   const stored = getStoredState();
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
 
@@ -43,7 +46,7 @@ export default function App() {
     (hashParams.get("page") as Page) || stored?.page || "landing"
   );
   const [role, setRole] = useState<"customer" | "worker" | "admin" | null>(
-    (hashParams.get("role") as any) || stored?.role || null
+    authRole || (hashParams.get("role") as any) || stored?.role || null
   );
   const [lang, setLang] = useState<"en" | "hi">(
     (hashParams.get("lang") as any) || stored?.lang || "en"
@@ -54,6 +57,7 @@ export default function App() {
   const [selectedService, setSelectedService] = useState(
     hashParams.get("service") || stored?.selectedService || "All"
   );
+
 
   const initialPage = (hashParams.get("page") as Page) || stored?.page || "landing";
   const isInitialWorkerPage = ["worker-profile", "booking", "tracking", "payment"].includes(initialPage);
@@ -127,6 +131,41 @@ export default function App() {
     document.title = `Saharaa — ${serviceName}${location.split(",")[0]}`;
   }, [page, role, lang, location, selectedService, selectedWorker, lockedPrice, searchQuery, scheduleMode, scheduleDate, address, partsApproved]);
 
+  // Synchronize authenticated role from Supabase Auth
+  useEffect(() => {
+    if (authRole) {
+      setRole(authRole);
+    } else if (!isAuthenticated) {
+      setRole(null);
+    }
+  }, [authRole, isAuthenticated]);
+
+  // Role-based route guard
+  useEffect(() => {
+    if (authLoading) return;
+
+    const workerPages: Page[] = ["worker-dashboard", "worker-jobs", "worker-earnings"];
+    const adminPages: Page[] = ["admin"];
+
+    // 1. Admin route protection
+    if (adminPages.includes(page)) {
+      if (!isAuthenticated) {
+        setPage("auth");
+      } else if (authRole !== "admin") {
+        setPage(authRole === "worker" ? "worker-dashboard" : "customer-home");
+      }
+    }
+
+    // 2. Worker route protection
+    if (workerPages.includes(page)) {
+      if (!isAuthenticated) {
+        setPage("auth");
+      } else if (authRole !== "worker" && authRole !== "admin") {
+        setPage("customer-home");
+      }
+    }
+  }, [page, authRole, isAuthenticated, authLoading]);
+
   // Handle browser Back / Forward buttons (popstate & hashchange)
   useEffect(() => {
     const handleHashChange = () => {
@@ -159,7 +198,27 @@ export default function App() {
   }, []);
 
   const go = (p: Page, wid?: unknown) => {
-    const isWorkerFlow = ["worker-profile", "booking", "tracking", "payment"].includes(p);
+    const workerPages: Page[] = ["worker-dashboard", "worker-jobs", "worker-earnings"];
+    const adminPages: Page[] = ["admin"];
+
+    let targetPage = p;
+
+    // Route guards
+    if (adminPages.includes(p)) {
+      if (!isAuthenticated) {
+        targetPage = "auth";
+      } else if (authRole !== "admin") {
+        targetPage = authRole === "worker" ? "worker-dashboard" : "customer-home";
+      }
+    } else if (workerPages.includes(p)) {
+      if (!isAuthenticated) {
+        targetPage = "auth";
+      } else if (authRole !== "worker" && authRole !== "admin") {
+        targetPage = "customer-home";
+      }
+    }
+
+    const isWorkerFlow = ["worker-profile", "booking", "tracking", "payment"].includes(targetPage);
     const valid = getValidWorkerId(wid);
 
     if (valid) {
@@ -182,9 +241,22 @@ export default function App() {
       if (typeof payload.partsApproved === "boolean") setPartsApproved(payload.partsApproved);
     }
 
-    setPage(p);
+    setPage(targetPage);
     window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FAF9F6]">
+        <div className="relative grid h-14 w-14 place-items-center rounded-2xl bg-[#1B4332] text-white card-shadow animate-pulse">
+          <HeartHandshake className="h-7 w-7" strokeWidth={2.2} />
+          <span className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-[#E76F51] text-[10px] font-extrabold text-white ring-2 ring-[#FAF9F6]">S</span>
+        </div>
+        <p className="mt-4 font-display font-black text-[20px] text-[#1A1A1A] tracking-tight">Saharaa</p>
+        <p className="mt-1 text-xs font-semibold text-[#4A4A4A]">Local Skills • Fair Work • Trusted Connections</p>
+      </div>
+    );
+  }
 
   const isWorkerPage = ["worker-dashboard", "worker-onboarding", "worker-jobs", "worker-earnings"].includes(page);
   const hideDemo = page === "auth";

@@ -637,77 +637,9 @@ function ImpactRow({ k, v }: { k: string; v: string }) {
 }
 
 /* ================= AUTH ================= */
-export function Auth({ go, setRole, lang }: { go: (p: Page) => void; setRole: (r: "customer" | "worker" | "admin") => void; lang: "en" | "hi" }) {
-  const [role, setR] = useState<"customer" | "worker" | "admin">("customer");
-  const [phone, setPhone] = useState("");
-  const [otpSent, setOtpSent] = useState(false);
-  const [otp, setOtp] = useState(["", "", "", ""]);
+import { AuthPage } from "./AuthPage";
 
-  const enter = () => {
-    setRole(role);
-    go(role === "worker" ? "worker-dashboard" : role === "admin" ? "admin" : "customer-home");
-  };
-
-  return (
-    <div className="page-enter mx-auto grid max-w-5xl gap-6 px-4 py-8 sm:px-6 lg:grid-cols-2 lg:py-14">
-      <div className="hidden overflow-hidden rounded-[24px] bg-[#1B4332] p-8 text-white lg:block">
-        <div className="jaali-pattern absolute inset-0 opacity-30" />
-        <div className="relative">
-          <p className="inline-flex rounded-full bg-white/10 px-3.5 py-1.5 text-[11px] font-extrabold uppercase tracking-widest text-[#F4A261] ring-1 ring-white/15">Vecnaverse • Social Impact</p>
-          <h2 className="font-display mt-4 text-[34px] font-black leading-tight">One account.<br />Two ways to <span className="text-[#F4A261]">grow.</span></h2>
-          <div className="mt-6 space-y-3">
-            {[["Find trusted help in minutes", "Verified workers, fair prices, live tracking"], ["Earn with dignity", "Zero joining fee, tips 100% yours, weekly payouts"]].map(([t, d]) => (
-              <div key={t} className="flex gap-3 rounded-2xl bg-white/8 p-4 ring-1 ring-white/12"><CheckCircle2 className="h-5 w-5 shrink-0 text-[#52B788]" /><span><span className="block text-[14px] font-extrabold">{t}</span><span className="block text-[12.5px] font-medium text-white/65">{d}</span></span></div>
-            ))}
-          </div>
-          <img src="https://images.pexels.com/photos/8819155/pexels-photo-8819155.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200" alt="Community" className="mt-6 h-48 w-full rounded-2xl object-cover ring-1 ring-white/20" />
-        </div>
-      </div>
-      <div className="rounded-[24px] bg-white p-6 ring-1 ring-[#1B4332]/10 card-shadow sm:p-8">
-        <h1 className="font-display text-[24px] font-black">{lang === "hi" ? "शुरू करें" : "Get started"}</h1>
-        <p className="mt-1 text-[13.5px] font-medium text-[#4A4A4A]">Choose your role — switch anytime.</p>
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          {([
-            { id: "customer", t: "Customer", hi: "ग्राहक", icon: Phone },
-            { id: "worker", t: "Worker", hi: "कारीगर", icon: Briefcase },
-            { id: "admin", t: "Admin", hi: "एडमिन", icon: ShieldCheck },
-          ] as const).map((r) => (
-            <button key={r.id} onClick={() => setR(r.id)} className={`flex flex-col items-center gap-1.5 rounded-2xl py-4 ring-2 transition ${role === r.id ? "bg-[#1B4332] text-white ring-[#1B4332]" : "bg-[#FAF9F6] text-[#1A1A1A] ring-[#1B4332]/10"}`}>
-              <r.icon className="h-5 w-5" /><span className="text-[12.5px] font-extrabold">{lang === "hi" ? r.hi : r.t}</span>
-            </button>
-          ))}
-        </div>
-        {!otpSent ? (
-          <div className="mt-5">
-            <label className="text-[12px] font-extrabold uppercase tracking-wide text-[#4A4A4A]">Mobile number</label>
-            <div className="mt-1.5 flex gap-2">
-              <span className="grid place-items-center rounded-2xl bg-[#FAF9F6] px-4 text-[14px] font-extrabold ring-1 ring-[#1B4332]/12">+91</span>
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="numeric" placeholder="98765 43210" className="h-13 w-full rounded-2xl bg-[#FAF9F6] px-4 py-3.5 text-[15px] font-bold outline-none ring-1 ring-[#1B4332]/12 focus:ring-[#2D6A4F]" />
-            </div>
-            <button onClick={() => setOtpSent(true)} className="mt-3 w-full rounded-2xl bg-[#1B4332] py-4 text-[14.5px] font-extrabold text-white transition hover:bg-[#2D6A4F]">Send OTP →</button>
-            <p className="mt-3 text-center text-[11.5px] font-semibold text-[#8a8a8a]">Demo: any number works • OTP auto-filled on next step</p>
-          </div>
-        ) : (
-          <div className="animate-slide-up mt-5">
-            <label className="text-[12px] font-extrabold uppercase tracking-wide text-[#4A4A4A]">Enter OTP sent to +91 {phone || "98765 43210"}</label>
-            <div className="mt-2 flex gap-2">
-              {otp.map((d, i) => (
-                <input key={i} value={d} maxLength={1} inputMode="numeric"
-                  onChange={(e) => { const n = [...otp]; n[i] = e.target.value; setOtp(n); if (e.target.value && i < 3) document.getElementById(`otp-${i + 1}`)?.focus(); }}
-                  id={`otp-${i}`} placeholder={["4", "2", "8", "1"][i]}
-                  className="h-14 w-full rounded-2xl bg-[#FAF9F6] text-center text-[20px] font-extrabold outline-none ring-1 ring-[#1B4332]/12 focus:ring-[#2D6A4F]" />
-              ))}
-            </div>
-            <button onClick={enter} className="mt-3 w-full rounded-2xl bg-[#E76F51] py-4 text-[14.5px] font-extrabold text-white transition hover:bg-[#c65a3a]">
-              Verify & continue as {role} →
-            </button>
-            <button onClick={() => setOtpSent(false)} className="mt-2 w-full py-2 text-[12.5px] font-bold text-[#4A4A4A]">← Change number</button>
-          </div>
-        )}
-        <div className="mt-5 flex items-center gap-2 rounded-2xl bg-[#FAF9F6] p-3.5 text-[11.5px] font-semibold text-[#4A4A4A] ring-1 ring-[#1B4332]/8">
-          <LogOut className="h-4 w-4 rotate-180" /> By continuing you agree to fair-work terms: honest pricing, respectful communication, verified identity.
-        </div>
-      </div>
-    </div>
-  );
+export function Auth({ go, lang }: { go: (p: Page, w?: string) => void; setRole?: (r: "customer" | "worker" | "admin") => void; lang: "en" | "hi" }) {
+  return <AuthPage go={go} lang={lang} />;
 }
+
