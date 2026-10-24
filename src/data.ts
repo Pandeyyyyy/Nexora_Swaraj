@@ -28,12 +28,12 @@ export type Worker = {
   serviceId: string;
   skills: string[];
   price: number;
-  rating: number;
+  rating?: number | null;
   jobs: number;
   distance: string;
   distanceKm: number;
   eta: string;
-  trustDNA: number;
+  trustDNA?: number | null;
   verified: boolean;
   availableNow: boolean;
   responseMins: number;
@@ -268,7 +268,126 @@ export const workers: Worker[] = [
       { label: "~5 min response", value: "Fast", done: true },
     ],
   },
+  {
+    id: "harish",
+    name: "Harish Rawat",
+    hindiName: "हरीश रावत",
+    photo: "https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+    service: "Gardening",
+    serviceId: "gardening",
+    skills: ["Balcony gardens", "Pruning & repotting", "Organic manure"],
+    price: 249,
+    rating: 4.8,
+    jobs: 112,
+    distance: "1.6 km",
+    distanceKm: 1.6,
+    eta: "~22 min",
+    trustDNA: 91,
+    verified: true,
+    availableNow: true,
+    responseMins: 6,
+    languages: ["Hindi", "Pahari"],
+    area: "Mayur Vihar & 4 km",
+    about: "Dedicated urban gardener with 8+ years experience. Specializes in balcony setups, natural compost and keeping household plants thriving.",
+    breakdown: [
+      { label: "Aadhaar + horti certified", value: "ID checked", done: true },
+      { label: "112 jobs completed", value: "Experienced", done: true },
+      { label: "4.8 average rating", value: "Loved by locals", done: true },
+      { label: "~6 min response", value: "Fast", done: true },
+    ],
+  },
 ];
+
+export type ServiceJobConfig = {
+  title: string;
+  defaultDesc: string;
+  workerGreeting: string;
+  workerCounterReason: string;
+  photos: string[];
+};
+
+export const serviceJobConfigs: Record<string, ServiceJobConfig> = {
+  plumbing: {
+    title: "Kitchen tap leak repair",
+    defaultDesc: "Kitchen tap leaking continuously, needs washer replacement and pipe fitting check.",
+    workerGreeting: "Namaste! Seen your photos — tap washer + visit inspection. I can come in 20 mins.",
+    workerCounterReason: "Slightly low for parts + visit. I can do ₹{counter} with 30-day warranty?",
+    photos: [
+      "https://images.pexels.com/photos/19140578/pexels-photo-19140578.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+      "https://images.pexels.com/photos/29226620/pexels-photo-29226620.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+    ],
+  },
+  electrical: {
+    title: "Fan & switchboard repair",
+    defaultDesc: "Ceiling fan making squeaking noise and living room main switch sparking when turned on.",
+    workerGreeting: "Namaste! I checked your issue. I'll bring the multimeter, capacitor and safety tools.",
+    workerCounterReason: "For thorough wiring inspection and capacitor replacement, I can do ₹{counter} with 30-day warranty?",
+    photos: [
+      "https://images.pexels.com/photos/7647233/pexels-photo-7647233.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+      "https://images.pexels.com/photos/25851303/pexels-photo-25851303.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+    ],
+  },
+  cleaning: {
+    title: "Deep home cleaning",
+    defaultDesc: "Deep cleaning for 2BHK including kitchen oil grease removal and bathroom sanitization.",
+    workerGreeting: "Namaste! I bring professional eco-friendly cleaning solutions and scrubbers. Ready to start.",
+    workerCounterReason: "Deep sanitization takes 3 hours with specialized supplies. I can do ₹{counter}?",
+    photos: [
+      "https://images.pexels.com/photos/31199562/pexels-photo-31199562.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+      "https://images.pexels.com/photos/31251589/pexels-photo-31251589.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+    ],
+  },
+  painting: {
+    title: "Wall touch-up & painting",
+    defaultDesc: "Waterproofing touch-up and double-coat paint for master bedroom and balcony wall.",
+    workerGreeting: "Namaste! I will cover your furniture carefully before starting and apply primer + double coat.",
+    workerCounterReason: "With surface scraping, primer and premium emulsion, ₹{counter} is the fairest rate.",
+    photos: [
+      "https://images.pexels.com/photos/4986291/pexels-photo-4986291.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "https://images.pexels.com/photos/8819155/pexels-photo-8819155.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+    ],
+  },
+  cooking: {
+    title: "Daily meal preparation",
+    defaultDesc: "Fresh North Indian lunch and dinner preparation for 4 persons (dal, seasonal sabzi, rotis, rice).",
+    workerGreeting: "Namaste! I'll cook hygienic, homely food according to your family's spice preference.",
+    workerCounterReason: "For preparing both lunch and dinner with kitchen cleanup, ₹{counter} is fair.",
+    photos: [
+      "https://images.pexels.com/photos/31031050/pexels-photo-31031050.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+      "https://images.pexels.com/photos/8819146/pexels-photo-8819146.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+    ],
+  },
+  appliance: {
+    title: "AC servicing & cooling fix",
+    defaultDesc: "Split AC cooling slowly and water dripping slightly from indoor drain pipe.",
+    workerGreeting: "Namaste! I'll clean the indoor filters, check the cooling coil and verify gas pressure.",
+    workerCounterReason: "For coil cleaning, drain unclogging and 90-day warranty, I can offer ₹{counter}?",
+    photos: [
+      "https://images.pexels.com/photos/7397453/pexels-photo-7397453.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "https://images.pexels.com/photos/7647233/pexels-photo-7647233.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+    ],
+  },
+  carpentry: {
+    title: "Door lock & cabinet hinge repair",
+    defaultDesc: "Main wooden door lock getting stuck and 2 kitchen cabinet hinges loose and misaligned.",
+    workerGreeting: "Namaste! I have heavy-duty screws and mortise lock lubricant ready. Will fix both in 45 mins.",
+    workerCounterReason: "For replacing the worn hinges and servicing the main lock, ₹{counter} works for me.",
+    photos: [
+      "https://images.pexels.com/photos/37589666/pexels-photo-37589666.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "https://images.pexels.com/photos/9271168/pexels-photo-9271168.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+    ],
+  },
+  gardening: {
+    title: "Balcony plant pruning & repotting",
+    defaultDesc: "Balcony garden pruning, repotting 4 overgrown plants, adding vermicompost and pest spray.",
+    workerGreeting: "Namaste! I carry fresh organic manure, trimming shears, and plant nutrient spray.",
+    workerCounterReason: "For pruning 12 pots, repotting and organic nourishment, I can do ₹{counter}?",
+    photos: [
+      "https://images.pexels.com/photos/8819155/pexels-photo-8819155.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+      "https://images.pexels.com/photos/31199562/pexels-photo-31199562.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+    ],
+  },
+};
 
 export const reviews = [
   { name: "Priya S.", area: "Laxmi Nagar", text: "Ramesh fixed our kitchen leak in 40 minutes. Explained the price before starting — no surprise charges. So refreshing!", rating: 5, service: "Plumbing", time: "2 days ago" },

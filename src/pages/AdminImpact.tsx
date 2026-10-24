@@ -15,11 +15,34 @@ export function Admin({ go }: { go: (p: Page, w?: string) => void }) {
     { id: 2, name: "Rekha Singh", skill: "Cleaning", docs: "Aadhaar ✓ • Police check pending", score: 71, img: workers[6].photo },
     { id: 3, name: "Imran Sheikh", skill: "Electrical", docs: "Aadhaar ✓ • ITI cert ✓", score: 84, img: workers[2].photo },
   ]);
+  const [bookingQuery, setBookingQuery] = useState("");
+  const [reportsList, setReportsList] = useState([
+    { id: 1, t: "Late arrival — 40 mins", d: "Customer reports worker arrived late without update. Booking #SH-2461.", u: true, resolved: false, details: "Investigated: Metro delay on Blue line. Worker called customer at 9:15 AM to inform. 15% discount applied." },
+    { id: 2, t: "Price dispute — extra ₹100 asked", d: "Worker allegedly asked cash beyond locked price. Under review.", u: true, resolved: false, details: "FairFare policy checked. Worker asked for brass valve replacement without parts approval. Warning issued, customer refunded ₹100." },
+    { id: 3, t: "Excellent service flagged", d: "Customer praised Sunita — auto-nominated for Worker of Week. 🌟", u: false, resolved: false, details: "Customer gave 5/5 stars and praised cleanliness and punctuality. Badge unlocked." },
+  ]);
+  const [activeReport, setActiveReport] = useState<typeof reportsList[0] | null>(null);
+
+  const allBookings = [
+    ["#SH-2481", "Ramesh → Priya", "Plumbing • ₹450 locked", "On the Way", "bg-[#FEF6EC] text-[#c65a3a]"],
+    ["#SH-2480", "Sunita → Amit", "Cleaning • ₹549", "In Progress", "bg-[#EFFAF1] text-[#1B4332]"],
+    ["#SH-2479", "Arif → Kavita", "Electrical • ₹399", "Completed ✓", "bg-[#1B4332] text-white"],
+    ["#SH-2478", "Javed → Rohit", "AC repair • ₹449", "Completed ✓", "bg-[#1B4332] text-white"],
+    ["#SH-2477", "Harish → Sunita", "Gardening • ₹299", "Completed ✓", "bg-[#1B4332] text-white"],
+    ["#SH-2476", "Anita → Vikram", "Cooking • ₹350", "Completed ✓", "bg-[#1B4332] text-white"],
+  ];
+
   const [toast, setToast] = useState("");
   const decide = (id: number, ok: boolean) => {
     setQueue((q) => q.filter((x) => x.id !== id));
     setToast(ok ? "Worker verified ✓ TrustDNA issued" : "Sent back for document correction");
     setTimeout(() => setToast(""), 2600);
+  };
+
+  const resolveReport = (id: number, u: boolean) => {
+    setReportsList((list) => list.map((r) => r.id === id ? { ...r, resolved: true } : r));
+    setToast(u ? "Dispute marked resolved ✓ Customer & worker updated" : "Appreciation sent to worker's TrustDNA profile 🌟");
+    setTimeout(() => setToast(""), 3000);
   };
 
   return (
@@ -88,39 +111,113 @@ export function Admin({ go }: { go: (p: Page, w?: string) => void }) {
           <div className="overflow-hidden rounded-[20px] bg-white ring-1 ring-[#1B4332]/10 card-shadow">
             <div className="flex items-center gap-2 border-b border-[#1B4332]/10 p-4">
               <Search className="h-4 w-4 text-[#8a8a8a]" />
-              <input placeholder="Search bookings, workers, areas…" className="w-full bg-transparent text-[13.5px] font-semibold outline-none" />
+              <input
+                value={bookingQuery}
+                onChange={(e) => setBookingQuery(e.target.value)}
+                placeholder="Search bookings, workers, services, status…"
+                className="w-full bg-transparent text-[13.5px] font-semibold outline-none"
+              />
+              {bookingQuery && (
+                <button onClick={() => setBookingQuery("")} className="text-[12px] font-extrabold text-[#8a8a8a] hover:text-[#1A1A1A]">
+                  Clear
+                </button>
+              )}
             </div>
-            {[
-              ["#SH-2481", "Ramesh → Priya", "Plumbing • ₹450 locked", "On the Way", "bg-[#FEF6EC] text-[#c65a3a]"],
-              ["#SH-2480", "Sunita → Amit", "Cleaning • ₹549", "In Progress", "bg-[#EFFAF1] text-[#1B4332]"],
-              ["#SH-2479", "Arif → Kavita", "Electrical • ₹399", "Completed ✓", "bg-[#1B4332] text-white"],
-              ["#SH-2478", "Javed → Rohit", "AC repair • ₹449", "Completed ✓", "bg-[#1B4332] text-white"],
-            ].map(([id, who, what, st, c]) => (
-              <div key={id} className="flex flex-wrap items-center gap-2 border-b border-[#1B4332]/8 p-4 text-[13px] last:border-0">
-                <span className="font-extrabold">{id}</span>
-                <span className="font-bold">{who}</span>
-                <span className="font-semibold text-[#4A4A4A]">{what}</span>
-                <span className={`ml-auto rounded-full px-3 py-1 text-[11.5px] font-extrabold ${c}`}>{st}</span>
+            {filteredBookings.length === 0 ? (
+              <div className="p-8 text-center">
+                <p className="text-[14px] font-extrabold text-[#1B4332]">No matching bookings found</p>
+                <p className="mt-1 text-[12.5px] text-[#4A4A4A]">Try searching for "Plumbing", "Sunita", "Ramesh", or "#SH-2481".</p>
               </div>
-            ))}
+            ) : (
+              filteredBookings.map(([id, who, what, st, c]) => (
+                <div key={id} className="flex flex-wrap items-center gap-2 border-b border-[#1B4332]/8 p-4 text-[13px] last:border-0 hover:bg-[#FAF9F6] transition">
+                  <span className="font-extrabold">{id}</span>
+                  <span className="font-bold">{who}</span>
+                  <span className="font-semibold text-[#4A4A4A]">{what}</span>
+                  <span className={`ml-auto rounded-full px-3 py-1 text-[11.5px] font-extrabold ${c}`}>{st}</span>
+                </div>
+              ))
+            )}
           </div>
         )}
         {tab === "reports" && (
           <div className="grid gap-3 lg:grid-cols-2">
-            {[
-              { t: "Late arrival — 40 mins", d: "Customer reports worker arrived late without update. Booking #SH-2461.", u: true },
-              { t: "Price dispute — extra ₹100 asked", d: "Worker allegedly asked cash beyond locked price. Under review.", u: true },
-              { t: "Excellent service flagged", d: "Customer praised Sunita — auto-nominated for Worker of Week. 🌟", u: false },
-            ].map((r, i) => (
-              <div key={i} className={`rounded-[20px] bg-white p-5 ring-1 card-shadow ${r.u ? "ring-[#E76F51]/30" : "ring-[#2D6A4F]/25"}`}>
-                <p className="flex items-center gap-2 text-[14px] font-extrabold">{r.u ? <AlertTriangle className="h-4 w-4 text-[#E76F51]" /> : <CheckCircle2 className="h-4 w-4 text-[#2D6A4F]" />}{r.t}</p>
+            {reportsList.map((r) => (
+              <div key={r.id} className={`rounded-[20px] bg-white p-5 ring-1 card-shadow transition ${r.resolved ? "opacity-70 ring-[#1B4332]/10" : r.u ? "ring-[#E76F51]/30" : "ring-[#2D6A4F]/25"}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="flex items-center gap-2 text-[14px] font-extrabold">
+                    {r.u ? <AlertTriangle className="h-4 w-4 text-[#E76F51]" /> : <CheckCircle2 className="h-4 w-4 text-[#2D6A4F]" />}
+                    {r.t}
+                  </p>
+                  {r.resolved && (
+                    <span className="rounded-full bg-[#EFFAF1] px-2.5 py-0.5 text-[11px] font-extrabold text-[#1B4332]">Resolved ✓</span>
+                  )}
+                </div>
                 <p className="mt-1.5 text-[13px] font-medium text-[#4A4A4A]">{r.d}</p>
                 <div className="mt-3 flex gap-2">
-                  <button className="rounded-full bg-[#1B4332] px-4 py-2 text-[12px] font-extrabold text-white">{r.u ? "Resolve" : "Appreciate"}</button>
-                  <button className="rounded-full px-4 py-2 text-[12px] font-extrabold text-[#4A4A4A] ring-1 ring-[#1B4332]/15">Details</button>
+                  {!r.resolved ? (
+                    <button
+                      onClick={() => resolveReport(r.id, r.u)}
+                      className="rounded-full bg-[#1B4332] px-4 py-2 text-[12px] font-extrabold text-white transition hover:bg-[#2D6A4F]"
+                    >
+                      {r.u ? "Resolve" : "Appreciate"}
+                    </button>
+                  ) : (
+                    <span className="rounded-full bg-[#FAF9F6] px-4 py-2 text-[12px] font-bold text-[#8a8a8a] ring-1 ring-[#1B4332]/10">Action completed</span>
+                  )}
+                  <button
+                    onClick={() => setActiveReport(r)}
+                    className="rounded-full px-4 py-2 text-[12px] font-extrabold text-[#4A4A4A] ring-1 ring-[#1B4332]/15 transition hover:bg-[#FAF9F6]"
+                  >
+                    Details
+                  </button>
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Report Details Modal */}
+        {activeReport && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-lg overflow-hidden rounded-[24px] bg-white card-shadow-lg">
+              <div className="flex items-center justify-between bg-[#1B4332] p-5 text-white">
+                <div>
+                  <p className="text-[15px] font-extrabold">Incident Case #{activeReport.id} Investigation</p>
+                  <p className="text-[12px] text-white/80">{activeReport.t}</p>
+                </div>
+                <button onClick={() => setActiveReport(null)} className="rounded-full bg-white/10 px-2.5 py-1 text-[12px] font-bold text-white hover:bg-white/20">Close ✕</button>
+              </div>
+              <div className="p-5">
+                <div className="rounded-2xl bg-[#FAF9F6] p-4 ring-1 ring-[#1B4332]/10">
+                  <p className="text-[11px] font-extrabold uppercase text-[#8a8a8a]">Incident Summary</p>
+                  <p className="mt-1 text-[13px] font-bold text-[#1A1A1A]">{activeReport.d}</p>
+                </div>
+                <div className="mt-3 rounded-2xl bg-[#EFFAF1] p-4 ring-1 ring-[#2D6A4F]/20">
+                  <p className="text-[11px] font-extrabold uppercase text-[#2D6A4F]">Investigation Log & Policy Findings</p>
+                  <p className="mt-1 text-[13px] font-semibold text-[#1B4332]">{activeReport.details}</p>
+                </div>
+                <div className="mt-5 flex gap-2">
+                  {!activeReport.resolved && (
+                    <button
+                      onClick={() => {
+                        resolveReport(activeReport.id, activeReport.u);
+                        setActiveReport(null);
+                      }}
+                      className="flex-1 rounded-2xl bg-[#1B4332] py-3 text-[13.5px] font-extrabold text-white"
+                    >
+                      {activeReport.u ? "Approve Resolution & Notify" : "Send Official Badge & Note"}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setActiveReport(null)}
+                    className="rounded-2xl px-5 py-3 text-[13px] font-extrabold text-[#4A4A4A] ring-1 ring-[#1B4332]/15"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
         {tab === "analytics" && (

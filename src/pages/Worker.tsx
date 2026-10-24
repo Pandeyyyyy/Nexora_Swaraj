@@ -170,6 +170,7 @@ function StatBar({ label, value, pct }: { label: string; value: string; pct: num
 /* ================= WORKER ONBOARDING ================= */
 export function WorkerOnboarding({ go }: { go: (p: Page) => void }) {
   const [step, setStep] = useState(0);
+  const [certUploaded, setCertUploaded] = useState(false);
   const [form, setForm] = useState({ name: "", phone: "", skill: "Plumbing", rate: "250", area: "Laxmi Nagar + 3km" });
   const steps = ["Personal", "Skills & rates", "Service area", "Documents"];
   return (
@@ -235,11 +236,22 @@ export function WorkerOnboarding({ go }: { go: (p: Page) => void }) {
             <h2 className="text-[17px] font-extrabold">Verify your identity 🛡️</h2>
             <p className="mt-1 text-[13px] font-medium text-[#4A4A4A]">Builds your TrustDNA score — verified workers earn 3× more.</p>
             <div className="mt-4 space-y-2.5">
-              {[["Aadhaar card", "Uploaded ✓", true], ["Address proof", "Uploaded ✓", true], ["Skill certificate (optional)", "Upload to boost TrustDNA +8", false]].map(([t, s, done]) => (
+              {[
+                ["Aadhaar card", "Uploaded ✓", true],
+                ["Address proof", "Uploaded ✓", true],
+                ["Skill certificate (optional)", certUploaded ? "Skill_Cert_2026.pdf uploaded ✓ (+8 TrustDNA)" : "Upload to boost TrustDNA +8", certUploaded]
+              ].map(([t, s, done]) => (
                 <div key={t as string} className="flex items-center gap-3 rounded-2xl bg-[#FAF9F6] p-4 ring-1 ring-[#1B4332]/10">
                   <span className={`grid h-11 w-11 place-items-center rounded-2xl ${done ? "bg-[#2D6A4F] text-white" : "bg-white text-[#1B4332] ring-1 ring-[#1B4332]/15"}`}>{done ? <FileCheck className="h-5 w-5" /> : <ImagePlus className="h-5 w-5" />}</span>
                   <span className="flex-1"><span className="block text-[13.5px] font-extrabold">{t}</span><span className={`block text-[11.5px] font-bold ${done ? "text-[#2D6A4F]" : "text-[#E76F51]"}`}>{s}</span></span>
-                  {!done && <button className="rounded-full bg-[#1B4332] px-4 py-2 text-[12px] font-extrabold text-white">Upload</button>}
+                  {!done && (
+                    <button
+                      onClick={() => setCertUploaded(true)}
+                      className="rounded-full bg-[#1B4332] px-4 py-2 text-[12px] font-extrabold text-white transition hover:bg-[#2D6A4F]"
+                    >
+                      Upload
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -262,6 +274,22 @@ export function WorkerJobs({ go }: { go: (p: Page, w?: string) => void }) {
   const [tab, setTab] = useState<"active" | "past">("active");
   const [jobStage, setJobStage] = useState(1);
   const [showProof, setShowProof] = useState(false);
+  const [modalType, setModalType] = useState<"navigate" | "chat" | "call" | null>(null);
+  const [chatMsgs, setChatMsgs] = useState([
+    { from: "customer", text: "Namaste Ramesh ji, what time will you reach?" },
+    { from: "me", text: "I have left Vikas Marg, arriving in 6-8 minutes!" }
+  ]);
+  const [quickInput, setQuickInput] = useState("");
+  const [callActive, setCallActive] = useState(false);
+  const [toast, setToast] = useState("");
+
+  const sendMsg = (textToSend?: string) => {
+    const t = textToSend || quickInput;
+    if (!t.trim()) return;
+    setChatMsgs((prev) => [...prev, { from: "me", text: t.trim() }]);
+    setQuickInput("");
+  };
+
   return (
     <div className="page-enter mx-auto max-w-6xl px-4 pb-28 pt-5 sm:px-6 md:pb-16">
       <h1 className="font-display text-[24px] font-black sm:text-[30px]">My jobs</h1>
@@ -288,9 +316,24 @@ export function WorkerJobs({ go }: { go: (p: Page, w?: string) => void }) {
               ))}
             </div>
             <div className="mt-4 grid grid-cols-3 gap-2">
-              <button className="flex items-center justify-center gap-1.5 rounded-2xl bg-[#FAF9F6] py-3 text-[12.5px] font-extrabold ring-1 ring-[#1B4332]/12"><Navigation className="h-4 w-4" /> Navigate</button>
-              <button className="flex items-center justify-center gap-1.5 rounded-2xl bg-[#FAF9F6] py-3 text-[12.5px] font-extrabold ring-1 ring-[#1B4332]/12"><MessageCircle className="h-4 w-4" /> Chat</button>
-              <button className="flex items-center justify-center gap-1.5 rounded-2xl bg-[#FAF9F6] py-3 text-[12.5px] font-extrabold ring-1 ring-[#1B4332]/12"><Phone className="h-4 w-4" /> Call</button>
+              <button
+                onClick={() => setModalType("navigate")}
+                className="flex items-center justify-center gap-1.5 rounded-2xl bg-[#FAF9F6] py-3 text-[12.5px] font-extrabold ring-1 ring-[#1B4332]/12 transition hover:bg-[#1B4332] hover:text-white"
+              >
+                <Navigation className="h-4 w-4" /> Navigate
+              </button>
+              <button
+                onClick={() => setModalType("chat")}
+                className="flex items-center justify-center gap-1.5 rounded-2xl bg-[#FAF9F6] py-3 text-[12.5px] font-extrabold ring-1 ring-[#1B4332]/12 transition hover:bg-[#1B4332] hover:text-white"
+              >
+                <MessageCircle className="h-4 w-4" /> Chat
+              </button>
+              <button
+                onClick={() => { setModalType("call"); setCallActive(false); }}
+                className="flex items-center justify-center gap-1.5 rounded-2xl bg-[#FAF9F6] py-3 text-[12.5px] font-extrabold ring-1 ring-[#1B4332]/12 transition hover:bg-[#1B4332] hover:text-white"
+              >
+                <Phone className="h-4 w-4" /> Call
+              </button>
             </div>
             <button onClick={() => setShowProof(!showProof)} className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[#1B4332]/25 bg-[#FAF9F6] py-3.5 text-[13.5px] font-extrabold text-[#1B4332]">
               <Camera className="h-5 w-5" /> {showProof ? "Photos added ✓ (2)" : "Upload Proof of Work (before/after)"}
@@ -325,6 +368,154 @@ export function WorkerJobs({ go }: { go: (p: Page, w?: string) => void }) {
           ))}
         </div>
       )}
+
+      {/* Navigation Modal */}
+      {modalType === "navigate" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md overflow-hidden rounded-[24px] bg-white card-shadow-lg">
+            <div className="bg-[#1B4332] p-5 text-white">
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-2 text-[14px] font-extrabold"><Navigation className="h-4 w-4" /> Live Turn-by-Turn GPS</span>
+                <button onClick={() => setModalType(null)} className="rounded-full bg-white/10 px-2.5 py-1 text-[12px] font-bold text-white hover:bg-white/20">Close ✕</button>
+              </div>
+              <p className="mt-2 text-[20px] font-black">6 mins • 0.6 km away</p>
+              <p className="text-[12.5px] text-white/80">Destination: Priya Sharma — B-42, Laxmi Nagar</p>
+            </div>
+            <div className="p-5">
+              <div className="rounded-2xl bg-[#EFFAF1] p-4 ring-1 ring-[#2D6A4F]/20">
+                <p className="text-[13px] font-extrabold text-[#1B4332]">Turn right at Vikas Marg Main Crossing</p>
+                <p className="mt-1 text-[12px] font-semibold text-[#4A4A4A]">Then proceed 250m towards Gali No. 4, Green Gate.</p>
+              </div>
+              <div className="mt-4 flex gap-2">
+                <button
+                  onClick={() => {
+                    window.open("https://maps.google.com/?q=Laxmi+Nagar+Delhi", "_blank");
+                    setModalType(null);
+                  }}
+                  className="flex-1 rounded-2xl bg-[#1B4332] py-3 text-[13px] font-extrabold text-white"
+                >
+                  Open in Google Maps ↗
+                </button>
+                <button
+                  onClick={() => {
+                    setJobStage(1);
+                    setModalType(null);
+                    setToast("Marked status: On the way! Customer notified.");
+                    setTimeout(() => setToast(""), 3000);
+                  }}
+                  className="rounded-2xl bg-[#FAF9F6] px-4 py-3 text-[13px] font-extrabold text-[#1B4332] ring-1 ring-[#1B4332]/15"
+                >
+                  Confirm on way
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Chat Modal */}
+      {modalType === "chat" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="flex h-[480px] w-full max-w-md flex-col overflow-hidden rounded-[24px] bg-white card-shadow-lg">
+            <div className="flex items-center justify-between bg-[#1B4332] p-4 text-white">
+              <div>
+                <p className="text-[14px] font-extrabold">Priya Sharma (Customer)</p>
+                <p className="text-[11.5px] text-[#52B788]">● Active now • Job #SH-2481</p>
+              </div>
+              <button onClick={() => setModalType(null)} className="rounded-full bg-white/10 px-2.5 py-1 text-[12px] font-bold text-white hover:bg-white/20">Close ✕</button>
+            </div>
+            <div className="flex-1 space-y-2.5 overflow-y-auto p-4">
+              {chatMsgs.map((m, idx) => (
+                <div key={idx} className={`flex ${m.from === "me" ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-[13px] font-semibold ${m.from === "me" ? "bg-[#1B4332] text-white" : "bg-[#FAF9F6] text-[#1A1A1A] ring-1 ring-[#1B4332]/10"}`}>
+                    {m.text}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-[#1B4332]/10 bg-[#FAF9F6] p-3">
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {["I'm at the gate", "Reached location", "Please check door"].map((quick) => (
+                  <button
+                    key={quick}
+                    onClick={() => sendMsg(quick)}
+                    className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-[#1B4332] ring-1 ring-[#1B4332]/15"
+                  >
+                    {quick}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  value={quickInput}
+                  onChange={(e) => setQuickInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && sendMsg()}
+                  placeholder="Type message to Priya..."
+                  className="flex-1 rounded-2xl bg-white px-4 py-2.5 text-[13px] font-semibold outline-none ring-1 ring-[#1B4332]/15"
+                />
+                <button
+                  onClick={() => sendMsg()}
+                  className="rounded-2xl bg-[#1B4332] px-4 py-2.5 text-[13px] font-extrabold text-white"
+                >
+                  Send
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Call Modal */}
+      {modalType === "call" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm overflow-hidden rounded-[24px] bg-white p-6 text-center card-shadow-lg">
+            <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#EFFAF1] text-[#1B4332] ring-4 ring-[#2D6A4F]/20">
+              <Phone className="h-6 w-6" />
+            </span>
+            <h3 className="mt-4 text-[18px] font-black">Customer Call Masking</h3>
+            <p className="mt-1 text-[13px] font-medium text-[#4A4A4A]">Priya Sharma • Booking #SH-2481</p>
+            <div className="mt-4 rounded-2xl bg-[#FAF9F6] p-3.5 ring-1 ring-[#1B4332]/10">
+              <p className="text-[11px] font-bold uppercase text-[#8a8a8a]">Virtual Bridge Number</p>
+              <p className="font-mono text-[16px] font-extrabold text-[#1B4332]">+91 011-4920-XXXX</p>
+              <p className="text-[11px] font-semibold text-[#52B788]">✓ Personal numbers remain confidential</p>
+            </div>
+            {callActive ? (
+              <div className="animate-fade-in mt-4 rounded-2xl bg-[#EFFAF1] p-3 text-[13px] font-extrabold text-[#1B4332]">
+                ● Call connected (00:14) • Speaking with customer
+              </div>
+            ) : null}
+            <div className="mt-5 flex gap-2">
+              {!callActive ? (
+                <button
+                  onClick={() => setCallActive(true)}
+                  className="flex-1 rounded-2xl bg-[#2D6A4F] py-3 text-[13.5px] font-extrabold text-white transition hover:bg-[#1B4332]"
+                >
+                  Connect Call 📞
+                </button>
+              ) : (
+                <button
+                  onClick={() => { setCallActive(false); setModalType(null); }}
+                  className="flex-1 rounded-2xl bg-[#E76F51] py-3 text-[13.5px] font-extrabold text-white"
+                >
+                  End Call
+                </button>
+              )}
+              <button
+                onClick={() => setModalType(null)}
+                className="rounded-2xl px-4 py-3 text-[13px] font-extrabold text-[#4A4A4A] ring-1 ring-[#1B4332]/15"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className="animate-slide-up fixed bottom-24 left-1/2 z-50 w-[calc(100%-32px)] max-w-md -translate-x-1/2 rounded-2xl bg-[#122b21] px-5 py-3.5 text-center text-[13.5px] font-bold text-white card-shadow-lg md:bottom-8">
+          {toast}
+        </div>
+      )}
       <WorkerBottomNav page="worker-jobs" go={go} />
     </div>
   );
@@ -333,6 +524,7 @@ export function WorkerJobs({ go }: { go: (p: Page, w?: string) => void }) {
 /* ================= EARNINGS & IMPACT ================= */
 export function WorkerEarnings({ go, lang }: { go: (p: Page) => void; lang: "en" | "hi" }) {
   const [range, setRange] = useState<"week" | "month">("week");
+  const [toast, setToast] = useState("");
   const week = [420, 650, 380, 720, 910, 1240, 860];
   const month = [4200, 5100, 4800, 6200];
   const data = range === "week" ? week : month;
@@ -405,10 +597,36 @@ export function WorkerEarnings({ go, lang }: { go: (p: Page) => void; lang: "en"
           <div className="rounded-[20px] bg-white p-5 ring-1 ring-[#1B4332]/10 card-shadow">
             <p className="text-[13.5px] font-extrabold">Payout • UPI ****4821</p>
             <p className="text-[12px] font-semibold text-[#4A4A4A]">Next payout tomorrow • ₹1,240 • No commission on tips</p>
-            <button className="mt-3 w-full rounded-2xl bg-[#EFFAF1] py-2.5 text-[12.5px] font-extrabold text-[#1B4332] ring-1 ring-[#2D6A4F]/25">Download statement</button>
+            <button
+              onClick={() => {
+                const csvContent = "data:text/csv;charset=utf-8," + encodeURIComponent(
+                  "Date,Job ID,Customer,Service,Locked Price,Tip,Platform Fee,Net Payout\n" +
+                  "2026-10-24,#SH-2481,Priya Sharma,Tap repair,₹450,₹40,₹0,₹490\n" +
+                  "2026-10-24,#SH-2475,Sunil Kumar,Tank check,₹550,₹50,₹0,₹600\n" +
+                  "2026-10-23,#SH-2460,Rekha Devi,Pipe fitting,₹720,₹60,₹0,₹780\n"
+                );
+                const link = document.createElement("a");
+                link.setAttribute("href", csvContent);
+                link.setAttribute("download", `Saharaa_Statement_${range}_2026.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                setToast(`Statement downloaded for ${range === "week" ? "this week" : "this month"} 📄`);
+                setTimeout(() => setToast(""), 3000);
+              }}
+              className="mt-3 w-full rounded-2xl bg-[#EFFAF1] py-2.5 text-[12.5px] font-extrabold text-[#1B4332] ring-1 ring-[#2D6A4F]/25 transition hover:bg-[#1B4332] hover:text-white"
+            >
+              Download statement (CSV)
+            </button>
           </div>
         </aside>
       </div>
+
+      {toast && (
+        <div className="animate-slide-up fixed bottom-24 left-1/2 z-50 w-[calc(100%-32px)] max-w-md -translate-x-1/2 rounded-2xl bg-[#122b21] px-5 py-3.5 text-center text-[13.5px] font-bold text-white card-shadow-lg md:bottom-8">
+          {toast}
+        </div>
+      )}
       <WorkerBottomNav page="worker-earnings" go={go} />
     </div>
   );

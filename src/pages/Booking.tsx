@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import {
   ArrowRight, BadgeCheck, Camera, CheckCircle2, ChevronLeft, Clock, ImagePlus,
   Lock, MapPin, MessageCircle, Mic, Navigation, Phone, ShieldCheck, Star,
-  AlertTriangle, Wallet, RotateCcw, Send, Sparkles, Timer, FileText, ChevronRight,
+  AlertTriangle, Wallet, RotateCcw, Send, Sparkles, Timer, FileText, ChevronRight, X,
 } from "lucide-react";
-import { workers } from "../data";
+import { workers, serviceJobConfigs } from "../data";
 import type { OfferMsg } from "../data";
 import { CustomerBottomNav, Stars, TrustRing } from "../components/shared";
 import type { Page } from "../components/shared";
@@ -12,58 +12,140 @@ import type { Page } from "../components/shared";
 /* ================= BOOKING + FAIRFARE ================= */
 export function BookingFlow({
   go, lang, workerId, onLocked,
+  scheduleMode = "asap", setScheduleMode, scheduleDate = "Tomorrow, 10:00 AM", setScheduleDate,
+  address = "B-42, Laxmi Nagar, Delhi 110092", setAddress,
 }: {
-  go: (p: Page, wid?: string) => void; lang: "en" | "hi"; workerId: string; onLocked: (price: number) => void;
+  go: (p: Page, widOrOpts?: any) => void; lang: "en" | "hi"; workerId: string; onLocked: (price: number) => void;
+  scheduleMode?: "asap" | "later"; setScheduleMode?: (m: "asap" | "later") => void;
+  scheduleDate?: string; setScheduleDate?: (d: string) => void;
+  address?: string; setAddress?: (a: string) => void;
 }) {
   const w = workers.find((x) => x.id === workerId) ?? workers[0];
+  const cfg = serviceJobConfigs[w.serviceId] || serviceJobConfigs["plumbing"];
+
   const [step, setStep] = useState(1);
-  const [schedule, setSchedule] = useState<"asap" | "later">("asap");
-  const [date, setDate] = useState("Tomorrow, 10:00 AM");
-  const [address, setAddress] = useState("B-42, Laxmi Nagar, Delhi 110092");
-  const [desc, setDesc] = useState("Kitchen tap leaking continuously, needs washer + tap check.");
-  const [photos, setPhotos] = useState(2);
+  const [schedule, setSchedule] = useState<"asap" | "later">(scheduleMode);
+  const [date, setDate] = useState(scheduleDate);
+  const [customDate, setCustomDate] = useState("");
+  const [customTime, setCustomTime] = useState("10:00 AM - 12:00 PM");
+  const [dateError, setDateError] = useState("");
+  const [localAddress, setLocalAddress] = useState(address);
+  const [desc, setDesc] = useState(cfg.defaultDesc);
+  const [photos, setPhotos] = useState(cfg.photos.length);
   const [offers, setOffers] = useState<OfferMsg[]>([
-    { id: 1, from: "system", text: `FairFare started · ${w.name.split(" ")[0]}'s starting quote`, price: w.price + 150, time: "10:02" },
-    { id: 2, from: "worker", text: "Namaste! Seen your photos — tap washer + visit charge. I can come in 20 mins.", price: w.price + 150, time: "10:03" },
+    {
+      id: 1,
+      from: "system",
+      text: `FairFare started · ${w.name.split(" ")[0]}'s quote for ${cfg.title.toLowerCase()}`,
+      price: w.price + 150,
+      time: "10:02",
+    },
+    {
+      id: 2,
+      from: "worker",
+      text: schedule === "asap"
+        ? `${cfg.workerGreeting} I can come in ${w.eta}.`
+        : `Namaste! Seen your request for ${cfg.title.toLowerCase()} on ${date}. I have confirmed that slot.`,
+      price: w.price + 150,
+      time: "10:03",
+    },
   ]);
   const [input, setInput] = useState("");
   const [locked, setLocked] = useState<number | null>(null);
   const [typing, setTyping] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [offers, typing, step]);
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [offers, typing, step]);
+
+  const todayStr = new Date().toISOString().split("T")[0];
+
+  const handleCustomDateChange = (dVal: string) => {
+    setCustomDate(dVal);
+    if (!dVal) return;
+    if (dVal < todayStr) {
+      setDateError("Please select today or a future date.");
+      return;
+    }
+    setDateError("");
+    const formatted = `${dVal}, ${customTime}`;
+    setDate(formatted);
+    if (setScheduleDate) setScheduleDate(formatted);
+  };
+
+  const handleCustomTimeChange = (tVal: string) => {
+    setCustomTime(tVal);
+    const datePart = customDate || "Tomorrow";
+    const formatted = `${datePart}, ${tVal}`;
+    setDate(formatted);
+    if (setScheduleDate) setScheduleDate(formatted);
+  };
+
+  const selectPresetDate = (d: string) => {
+    setDate(d);
+    setDateError("");
+    if (setScheduleDate) setScheduleDate(d);
+  };
 
   const sendOffer = (price?: number, text?: string) => {
     const val = price ?? parseInt(input.replace(/[^0-9]/g, "")) ?? 0;
     if (!val && !text) return;
-    const msg: OfferMsg = { id: Date.now(), from: "customer", text: text ?? `I can do ₹${val}. Can you come ASAP?`, price: val || undefined, time: "now" };
+    const msg: OfferMsg = {
+      id: Date.now(),
+      from: "customer",
+      text: text ?? `I can do ₹${val}. Can you confirm for ${schedule === "asap" ? "ASAP" : date}?`,
+      price: val || undefined,
+      time: "now",
+    };
     setOffers((o) => [...o, msg]);
     setInput("");
-    // worker counter simulation
     setTyping(true);
     setTimeout(() => {
       setTyping(false);
       if (val && val >= w.price) {
         const lockPrice = val;
-        setOffers((o) => [...o,
-          { id: Date.now() + 1, from: "worker", text: `Done! ₹${lockPrice} works for me. Locking price…`, price: lockPrice, time: "now" },
-          { id: Date.now() + 2, from: "system", text: `Price locked at ₹${lockPrice} · No hidden charges after this`, price: lockPrice, time: "now" },
+        setOffers((o) => [
+          ...o,
+          {
+            id: Date.now() + 1,
+            from: "worker",
+            text: `Done! ₹${lockPrice} works for me. Locking price for ${cfg.title.toLowerCase()}…`,
+            price: lockPrice,
+            time: "now",
+          },
+          {
+            id: Date.now() + 2,
+            from: "system",
+            text: `Price locked at ₹${lockPrice} · Guaranteed price for ${cfg.title.toLowerCase()} · No hidden charges`,
+            price: lockPrice,
+            time: "now",
+          },
         ]);
         setLocked(lockPrice);
       } else if (val) {
         const counter = Math.max(w.price, Math.round((val + w.price + 150) / 2 / 10) * 10);
-        setOffers((o) => [...o, { id: Date.now() + 1, from: "worker", text: `Slightly low for parts + visit. I can do ₹${counter} with 30-day warranty?`, price: counter, time: "now" }]);
+        const reason = cfg.workerCounterReason.replace("{counter}", String(counter));
+        setOffers((o) => [
+          ...o,
+          { id: Date.now() + 1, from: "worker", text: reason, price: counter, time: "now" },
+        ]);
       } else {
-        setOffers((o) => [...o, { id: Date.now() + 1, from: "worker", text: "Sure — tell me your budget and I'll try my best!", time: "now" }]);
+        setOffers((o) => [
+          ...o,
+          { id: Date.now() + 1, from: "worker", text: "Sure — tell me your budget and I'll do my best to make it fair!", time: "now" },
+        ]);
       }
-    }, 1600);
+    }, 1500);
   };
 
-  const quickOffers = [w.price - 50, w.price, w.price + 50];
+  const quickOffers = [w.price - 40, w.price, w.price + 60];
 
   return (
     <div className="page-enter mx-auto max-w-6xl px-4 pb-32 pt-5 sm:px-6 md:pb-16">
-      <button onClick={() => go("worker-profile", w.id)} className="flex items-center gap-1.5 rounded-full bg-white px-3.5 py-2 text-[13px] font-bold ring-1 ring-[#1B4332]/12"><ChevronLeft className="h-4 w-4" /> {w.name}</button>
+      <button onClick={() => go("worker-profile", w.id)} className="flex items-center gap-1.5 rounded-full bg-white px-3.5 py-2 text-[13px] font-bold ring-1 ring-[#1B4332]/12">
+        <ChevronLeft className="h-4 w-4" /> {w.name}
+      </button>
 
       {/* steps */}
       <div className="mt-4 flex items-center gap-1.5 sm:gap-2">
@@ -81,48 +163,130 @@ export function BookingFlow({
         <div>
           {step === 1 && (
             <div className="animate-slide-up rounded-[22px] bg-white p-5 ring-1 ring-[#1B4332]/10 card-shadow sm:p-6">
-              <h2 className="text-[18px] font-extrabold">Tell {w.name.split(" ")[0]} about the job</h2>
-              <p className="mt-1 text-[13px] font-semibold text-[#4A4A4A]">Clear details = accurate quote, no surprises.</p>
+              <h2 className="text-[18px] font-extrabold">Tell {w.name.split(" ")[0]} about the {w.service.toLowerCase()} work</h2>
+              <p className="mt-1 text-[13px] font-semibold text-[#4A4A4A]">Accurate details help {w.name.split(" ")[0]} give the most honest FairFare quote.</p>
 
-              <p className="mt-5 text-[12px] font-extrabold uppercase tracking-wide text-[#4A4A4A]">When? • ASAP / Schedule</p>
+              {/* Timing */}
+              <p className="mt-5 text-[12px] font-extrabold uppercase tracking-wide text-[#4A4A4A]">When do you need this done?</p>
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <button onClick={() => setSchedule("asap")} className={`flex items-center gap-2.5 rounded-2xl p-3.5 text-left ring-2 transition ${schedule === "asap" ? "bg-[#EFFAF1] ring-[#2D6A4F]" : "bg-[#FAF9F6] ring-[#1B4332]/10"}`}>
+                <button
+                  onClick={() => {
+                    setSchedule("asap");
+                    if (setScheduleMode) setScheduleMode("asap");
+                  }}
+                  className={`flex items-center gap-2.5 rounded-2xl p-3.5 text-left ring-2 transition ${schedule === "asap" ? "bg-[#EFFAF1] ring-[#2D6A4F]" : "bg-[#FAF9F6] ring-[#1B4332]/10"}`}
+                >
                   <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#E76F51] text-white"><Timer className="h-5 w-5" /></span>
-                  <span><span className="block text-[13.5px] font-extrabold">ASAP</span><span className="block text-[11.5px] font-bold text-[#4A4A4A]">Arrives {w.eta}</span></span>
+                  <span>
+                    <span className="block text-[13.5px] font-extrabold">ASAP</span>
+                    <span className="block text-[11.5px] font-bold text-[#4A4A4A]">{w.availableNow ? `Arrives ${w.eta}` : "Busy (~2h wait)"}</span>
+                  </span>
                 </button>
-                <button onClick={() => setSchedule("later")} className={`flex items-center gap-2.5 rounded-2xl p-3.5 text-left ring-2 transition ${schedule === "later" ? "bg-[#EFFAF1] ring-[#2D6A4F]" : "bg-[#FAF9F6] ring-[#1B4332]/10"}`}>
+                <button
+                  onClick={() => {
+                    setSchedule("later");
+                    if (setScheduleMode) setScheduleMode("later");
+                  }}
+                  className={`flex items-center gap-2.5 rounded-2xl p-3.5 text-left ring-2 transition ${schedule === "later" ? "bg-[#EFFAF1] ring-[#2D6A4F]" : "bg-[#FAF9F6] ring-[#1B4332]/10"}`}
+                >
                   <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#1B4332] text-white"><Clock className="h-5 w-5" /></span>
-                  <span><span className="block text-[13.5px] font-extrabold">Schedule</span><span className="block text-[11.5px] font-bold text-[#4A4A4A]">Pick slot</span></span>
+                  <span>
+                    <span className="block text-[13.5px] font-extrabold">Schedule</span>
+                    <span className="block text-[11.5px] font-bold text-[#4A4A4A]">Choose slot</span>
+                  </span>
                 </button>
               </div>
-              {schedule === "later" && (
-                <div className="animate-fade-in mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {["Today, 4 PM", "Tomorrow, 10 AM", "Tomorrow, 2 PM", "Sun, 11 AM"].map((d) => (
-                    <button key={d} onClick={() => setDate(d)} className={`rounded-2xl px-3 py-2.5 text-[12.5px] font-extrabold ring-1 transition ${date === d ? "bg-[#1B4332] text-white" : "bg-[#FAF9F6] ring-[#1B4332]/12"}`}>{d}</button>
-                  ))}
+
+              {/* ASAP worker unavailable warning */}
+              {schedule === "asap" && !w.availableNow && (
+                <div className="animate-fade-in mt-3 rounded-2xl bg-[#FFF1E8] p-3.5 text-[12.5px] font-bold text-[#9c3d1e] ring-1 ring-[#E76F51]/30">
+                  ⚠️ {w.name} is currently completing another job and is not immediately free. We strongly recommend scheduling a future appointment time slot below.
+                  <button onClick={() => setSchedule("later")} className="mt-1 block text-xs underline font-extrabold">
+                    Switch to Schedule appointment →
+                  </button>
                 </div>
               )}
 
+              {/* Schedule slot picker */}
+              {schedule === "later" && (
+                <div className="animate-fade-in mt-3 rounded-2xl bg-[#FAF9F6] p-4 ring-1 ring-[#1B4332]/10">
+                  <p className="text-[12px] font-extrabold uppercase tracking-wide text-[#4A4A4A]">Select appointment slot</p>
+                  <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {["Today, 4:00 PM", "Tomorrow, 10:00 AM", "Tomorrow, 2:00 PM", "Day after, 11:00 AM"].map((d) => (
+                      <button key={d} onClick={() => selectPresetDate(d)} className={`rounded-2xl px-3 py-2.5 text-[12px] font-extrabold ring-1 transition ${date === d ? "bg-[#1B4332] text-white ring-[#1B4332]" : "bg-white ring-[#1B4332]/12 hover:bg-[#FAF9F6]"}`}>{d}</button>
+                    ))}
+                  </div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <label className="text-[11.5px] font-bold text-[#4A4A4A]">
+                      Or choose calendar date:
+                      <input
+                        type="date"
+                        min={todayStr}
+                        value={customDate}
+                        onChange={(e) => handleCustomDateChange(e.target.value)}
+                        className="mt-1 w-full rounded-xl bg-white px-3 py-2 text-xs font-bold outline-none ring-1 ring-[#1B4332]/15"
+                      />
+                    </label>
+                    <label className="text-[11.5px] font-bold text-[#4A4A4A]">
+                      Preferred time window:
+                      <select
+                        value={customTime}
+                        onChange={(e) => handleCustomTimeChange(e.target.value)}
+                        className="mt-1 w-full rounded-xl bg-white px-3 py-2 text-xs font-bold outline-none ring-1 ring-[#1B4332]/15"
+                      >
+                        <option>09:00 AM - 11:00 AM (Morning)</option>
+                        <option>11:00 AM - 01:00 PM (Midday)</option>
+                        <option>02:00 PM - 04:00 PM (Afternoon)</option>
+                        <option>04:00 PM - 06:00 PM (Evening)</option>
+                        <option>06:00 PM - 08:00 PM (Late evening)</option>
+                      </select>
+                    </label>
+                  </div>
+                  {dateError && <p className="mt-2 text-xs font-bold text-[#c65a3a]">{dateError}</p>}
+                  <p className="mt-2 text-[11.5px] font-semibold text-[#1B4332]">
+                    Confirmed appointment: <span className="font-extrabold">{date}</span>
+                  </p>
+                </div>
+              )}
+
+              {/* Address */}
               <p className="mt-5 text-[12px] font-extrabold uppercase tracking-wide text-[#4A4A4A]">Address</p>
               <label className="mt-2 flex items-start gap-2.5 rounded-2xl bg-[#FAF9F6] p-3.5 ring-1 ring-[#1B4332]/10 focus-within:ring-[#2D6A4F]">
                 <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-[#E76F51]" />
-                <textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={2} className="w-full bg-transparent text-[13.5px] font-semibold outline-none" />
+                <textarea
+                  value={localAddress}
+                  onChange={(e) => {
+                    setLocalAddress(e.target.value);
+                    if (setAddress) setAddress(e.target.value);
+                  }}
+                  rows={2}
+                  className="w-full bg-transparent text-[13.5px] font-semibold outline-none"
+                />
               </label>
 
-              <p className="mt-4 text-[12px] font-extrabold uppercase tracking-wide text-[#4A4A4A]">Describe the work</p>
-              <textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={3} className="mt-2 w-full rounded-2xl bg-[#FAF9F6] p-3.5 text-[13.5px] font-semibold outline-none ring-1 ring-[#1B4332]/10 focus:ring-[#2D6A4F]" />
+              {/* Service specific description */}
+              <p className="mt-4 text-[12px] font-extrabold uppercase tracking-wide text-[#4A4A4A]">Describe the work ({w.service})</p>
+              <textarea
+                value={desc}
+                onChange={(e) => setDesc(e.target.value)}
+                rows={3}
+                className="mt-2 w-full rounded-2xl bg-[#FAF9F6] p-3.5 text-[13.5px] font-semibold outline-none ring-1 ring-[#1B4332]/10 focus:ring-[#2D6A4F]"
+              />
 
-              <p className="mt-4 text-[12px] font-extrabold uppercase tracking-wide text-[#4A4A4A]">Photos (optional, helps quote)</p>
+              {/* Photos */}
+              <p className="mt-4 text-[12px] font-extrabold uppercase tracking-wide text-[#4A4A4A]">Job photos (helps {w.name.split(" ")[0]} prepare tools)</p>
               <div className="mt-2 flex gap-2">
-                {[1, 2].slice(0, photos).map((i) => (
+                {cfg.photos.slice(0, photos).map((url, i) => (
                   <div key={i} className="relative h-20 w-20 overflow-hidden rounded-2xl ring-1 ring-[#1B4332]/15">
-                    <img src={i === 1 ? "https://images.pexels.com/photos/19140578/pexels-photo-19140578.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200" : "https://images.pexels.com/photos/29226620/pexels-photo-29226620.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200"} alt="Job" className="h-full w-full object-cover" />
-                    <button onClick={() => setPhotos(photos - 1)} className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-black/60 text-[10px] text-white">✕</button>
+                    <img src={url} alt={`${w.service} work preview`} className="h-full w-full object-cover" />
+                    <button onClick={() => setPhotos(Math.max(0, photos - 1))} className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-black/60 text-[10px] text-white">✕</button>
                   </div>
                 ))}
-                <button onClick={() => setPhotos(3)} className="grid h-20 w-20 place-items-center rounded-2xl border-2 border-dashed border-[#1B4332]/25 bg-[#FAF9F6] text-[#1B4332] transition hover:border-[#2D6A4F]">
-                  <span className="text-center"><ImagePlus className="mx-auto h-5 w-5" /><span className="text-[10px] font-extrabold">Add</span></span>
-                </button>
+                {photos < cfg.photos.length && (
+                  <button onClick={() => setPhotos(cfg.photos.length)} className="grid h-20 w-20 place-items-center rounded-2xl border-2 border-dashed border-[#1B4332]/25 bg-[#FAF9F6] text-[#1B4332] transition hover:border-[#2D6A4F]">
+                    <span className="text-center"><ImagePlus className="mx-auto h-5 w-5" /><span className="text-[10px] font-extrabold">Add</span></span>
+                  </button>
+                )}
               </div>
 
               <button onClick={() => setStep(2)} className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#1B4332] py-4 text-[15px] font-extrabold text-white transition hover:bg-[#2D6A4F] active:scale-[0.98]">
@@ -134,8 +298,15 @@ export function BookingFlow({
           {step === 2 && (
             <div className="animate-slide-up overflow-hidden rounded-[22px] bg-white ring-1 ring-[#1B4332]/10 card-shadow">
               <div className="bg-[#122b21] px-5 py-4 text-white">
-                <p className="flex items-center gap-2 text-[13px] font-extrabold"><Sparkles className="h-4 w-4 text-[#F4A261]" /> FAIRFARE™ NEGOTIATION <span className="ml-auto flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 text-[10.5px]"><Lock className="h-3 w-3" /> {locked ? "LOCKED" : "OPEN"}</span></p>
-                <p className="mt-1 text-[12px] font-medium text-white/60">Offer → Counter → Lock. Fair for you, fair for {w.name.split(" ")[0]}. No hidden charges after lock.</p>
+                <p className="flex items-center gap-2 text-[13px] font-extrabold">
+                  <Sparkles className="h-4 w-4 text-[#F4A261]" /> FAIRFARE™ NEGOTIATION FOR {w.service.toUpperCase()}
+                  <span className="ml-auto flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 text-[10.5px]">
+                    <Lock className="h-3 w-3" /> {locked ? "LOCKED" : "OPEN"}
+                  </span>
+                </p>
+                <p className="mt-1 text-[12px] font-medium text-white/60">
+                  Job: {cfg.title} • {schedule === "asap" ? `Immediate arrival (${w.eta})` : `Slot: ${date}`} • No hidden charges.
+                </p>
               </div>
               <div className="max-h-[380px] space-y-3 overflow-y-auto bg-[#FAF9F6] p-4 sm:p-5">
                 {offers.map((m) => (
@@ -163,10 +334,15 @@ export function BookingFlow({
                 <div className="animate-slide-up border-t-2 border-[#2D6A4F] bg-[#EFFAF1] p-4 sm:p-5">
                   <div className="flex items-center gap-3">
                     <span className="grid h-12 w-12 place-items-center rounded-full bg-[#2D6A4F] text-white"><Lock className="h-5 w-5" /></span>
-                    <div className="flex-1"><p className="text-[15px] font-extrabold text-[#1B4332]">Final Agreed Price: ₹{locked}</p><p className="text-[12px] font-bold text-[#4A4A4A]">{schedule === "asap" ? `ASAP • arrives ${w.eta}` : date} • No changes without your approval</p></div>
+                    <div className="flex-1">
+                      <p className="text-[15px] font-extrabold text-[#1B4332]">Final Agreed Price: ₹{locked}</p>
+                      <p className="text-[12px] font-bold text-[#4A4A4A]">{schedule === "asap" ? `ASAP • arrives ${w.eta}` : date} • No hidden platform fees</p>
+                    </div>
                     <CheckCircle2 className="h-7 w-7 text-[#2D6A4F]" />
                   </div>
-                  <button onClick={() => { onLocked(locked); setStep(3); }} className="mt-3 w-full rounded-2xl bg-[#1B4332] py-4 text-[15px] font-extrabold text-white transition hover:bg-[#2D6A4F]">Confirm booking at ₹{locked} →</button>
+                  <button onClick={() => { onLocked(locked); setStep(3); }} className="mt-3 w-full rounded-2xl bg-[#1B4332] py-4 text-[15px] font-extrabold text-white transition hover:bg-[#2D6A4F]">
+                    Review booking at ₹{locked} →
+                  </button>
                 </div>
               ) : (
                 <div className="border-t border-[#1B4332]/10 bg-white p-3.5 sm:p-4">
@@ -178,7 +354,7 @@ export function BookingFlow({
                   <div className="flex gap-2">
                     <div className="flex flex-1 items-center gap-2 rounded-full bg-[#FAF9F6] px-4 ring-1 ring-[#1B4332]/15 focus-within:ring-[#2D6A4F]">
                       <span className="text-[14px] font-extrabold text-[#1B4332]">₹</span>
-                      <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendOffer()} inputMode="numeric" placeholder="Your offer… e.g. 450" className="h-12 w-full bg-transparent text-[14px] font-bold outline-none" />
+                      <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendOffer()} inputMode="numeric" placeholder={`Your offer for ${w.service.toLowerCase()}… e.g. ${w.price}`} className="h-12 w-full bg-transparent text-[14px] font-bold outline-none" />
                     </div>
                     <button onClick={() => sendOffer()} className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#E76F51] text-white transition hover:bg-[#c65a3a] active:scale-90"><Send className="h-5 w-5" /></button>
                   </div>
@@ -188,53 +364,89 @@ export function BookingFlow({
           )}
 
           {step === 3 && (
-            <ConfirmBooking go={go} wId={w.id} price={locked ?? w.price} schedule={schedule} date={date} address={address} lang={lang} />
+            <ConfirmBooking
+              go={go}
+              wId={w.id}
+              price={locked ?? w.price}
+              schedule={schedule}
+              date={date}
+              address={localAddress}
+              lang={lang}
+              serviceName={w.service}
+              jobTitle={cfg.title}
+              jobDesc={desc}
+            />
           )}
         </div>
 
-        {/* worker mini */}
+        {/* worker mini summary */}
         <aside className="rounded-[22px] bg-white p-5 ring-1 ring-[#1B4332]/10 card-shadow lg:sticky lg:top-24">
           <div className="flex items-center gap-3">
             <img src={w.photo} alt={w.name} className="h-16 w-16 rounded-2xl object-cover" />
-            <div className="flex-1"><p className="flex items-center gap-1 text-[15px] font-extrabold">{w.name} <BadgeCheck className="h-4 w-4 fill-[#52B788] text-white" /></p><p className="text-[12px] font-semibold text-[#4A4A4A]">{w.service} • {w.distance} • {w.eta}</p></div>
+            <div className="flex-1">
+              <p className="flex items-center gap-1 text-[15px] font-extrabold">{w.name} <BadgeCheck className="h-4 w-4 fill-[#52B788] text-white" /></p>
+              <p className="text-[12px] font-semibold text-[#4A4A4A]">{w.service} • {w.distance} • {w.eta}</p>
+            </div>
             <TrustRing score={w.trustDNA} size={56} stroke={6} />
           </div>
           <div className="mt-4 space-y-2 rounded-2xl bg-[#FAF9F6] p-4 text-[12.5px] font-semibold text-[#4A4A4A] ring-1 ring-[#1B4332]/8">
+            <p className="flex justify-between">Selected service <span className="font-extrabold text-[#1A1A1A]">{w.service}</span></p>
             <p className="flex justify-between">Starting quote <span className="font-extrabold text-[#1A1A1A]">₹{w.price + 150}</span></p>
-            <p className="flex justify-between">Your target <span className="font-extrabold text-[#2D6A4F]">₹{w.price} – ₹{w.price + 150}</span></p>
-            <p className="flex justify-between">Platform fee <span className="font-extrabold text-[#2D6A4F]">FREE</span></p>
+            <p className="flex justify-between">FairFare target <span className="font-extrabold text-[#2D6A4F]">₹{w.price} – ₹{w.price + 150}</span></p>
+            <p className="flex justify-between">Platform fee <span className="font-extrabold text-[#2D6A4F]">FREE (₹0)</span></p>
           </div>
           <div className="mt-3 flex items-start gap-2 rounded-2xl bg-[#EFFAF1] p-3.5 text-[12px] font-semibold text-[#1B4332] ring-1 ring-[#2D6A4F]/20">
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /> Pay only after work is done & you confirm. Tips go 100% to the worker.
           </div>
         </aside>
       </div>
-      <CustomerBottomNav page="booking" go={go} onBook={() => { }} />
+      <CustomerBottomNav page="booking" go={go} onBook={() => {}} />
     </div>
   );
 }
 
-function ConfirmBooking({ go, wId, price, schedule, date, address, lang }: { go: (p: Page, w?: string) => void; wId: string; price: number; schedule: string; date: string; address: string; lang: string }) {
+function ConfirmBooking({
+  go, wId, price, schedule, date, address, lang, serviceName, jobTitle, jobDesc,
+}: {
+  go: (p: Page, widOrOpts?: any) => void; wId: string; price: number; schedule: string; date: string; address: string; lang: string;
+  serviceName: string; jobTitle: string; jobDesc: string;
+}) {
   const w = workers.find((x) => x.id === wId)!;
-  const fee = 0; const total = price + fee;
+  const platformFee = 0;
+  const total = price + platformFee;
+
   return (
     <div className="animate-slide-up rounded-[22px] bg-white p-5 ring-1 ring-[#1B4332]/10 card-shadow sm:p-6">
-      <p className="flex items-center gap-2 text-[18px] font-extrabold"><CheckCircle2 className="h-6 w-6 text-[#2D6A4F]" /> Review & confirm</p>
+      <p className="flex items-center gap-2 text-[18px] font-extrabold"><CheckCircle2 className="h-6 w-6 text-[#2D6A4F]" /> Review & confirm booking</p>
+      
       <div className="mt-4 flex items-center gap-3 rounded-2xl bg-[#EFFAF1] p-4 ring-1 ring-[#2D6A4F]/25">
         <Lock className="h-6 w-6 text-[#2D6A4F]" />
-        <div><p className="text-[13px] font-bold text-[#1B4332]">FAIRFARE LOCKED</p><p className="text-[22px] font-extrabold text-[#1B4332]">₹{price} <span className="text-[12px] font-bold text-[#4A4A4A]">final • no hidden charges</span></p></div>
+        <div>
+          <p className="text-[13px] font-bold text-[#1B4332]">FAIRFARE LOCKED</p>
+          <p className="text-[22px] font-extrabold text-[#1B4332]">₹{price} <span className="text-[12px] font-bold text-[#4A4A4A]">final agreed price • no surprise charges</span></p>
+        </div>
       </div>
+
       <div className="mt-4 space-y-2.5 text-[13.5px] font-semibold">
+        <div className="flex gap-2.5 rounded-xl bg-[#FAF9F6] p-3 text-xs">
+          <span className="font-extrabold text-[#1B4332]">{serviceName}</span>
+          <span className="text-[#4A4A4A]">({jobTitle}) — {jobDesc}</span>
+        </div>
         <div className="flex gap-2.5"><MapPin className="h-5 w-5 shrink-0 text-[#E76F51]" /><span>{address}</span></div>
-        <div className="flex gap-2.5"><Clock className="h-5 w-5 shrink-0 text-[#1B4332]" /><span>{schedule === "asap" ? `ASAP — arrives ${w.eta}` : date}</span></div>
+        <div className="flex gap-2.5"><Clock className="h-5 w-5 shrink-0 text-[#1B4332]" /><span>{schedule === "asap" ? `ASAP — arrives ${w.eta}` : `Scheduled: ${date}`}</span></div>
         <div className="flex gap-2.5"><Wallet className="h-5 w-5 shrink-0 text-[#1B4332]" /><span>Pay after work • UPI / Cash / Card</span></div>
       </div>
+
       <div className="mt-4 rounded-2xl bg-[#FAF9F6] p-4 text-[13px] font-semibold ring-1 ring-[#1B4332]/8">
-        <p className="flex justify-between py-0.5">Agreed price <span className="font-extrabold">₹{price}</span></p>
-        <p className="flex justify-between py-0.5">Platform fee <span className="font-extrabold text-[#2D6A4F]">FREE</span></p>
+        <p className="flex justify-between py-0.5">Agreed service price <span className="font-extrabold text-[#1A1A1A]">₹{price}</span></p>
+        <p className="flex justify-between py-0.5">Platform booking fee <span className="font-extrabold text-[#2D6A4F]">FREE (₹0)</span></p>
         <p className="flex justify-between border-t border-dashed border-[#1B4332]/15 pt-2 text-[15px] font-extrabold">You'll pay <span className="text-[#1B4332]">₹{total}</span></p>
       </div>
-      <button onClick={() => go("tracking", wId)} className="mt-4 w-full rounded-2xl bg-[#1B4332] py-4 text-[15px] font-extrabold text-white transition hover:bg-[#2D6A4F] active:scale-[0.98]">
+
+      <button
+        onClick={() => go("tracking", { workerId: wId, price, schedule, date, address })}
+        className="mt-4 w-full rounded-2xl bg-[#1B4332] py-4 text-[15px] font-extrabold text-white transition hover:bg-[#2D6A4F] active:scale-[0.98]"
+      >
         {lang === "hi" ? "बुकिंग पक्की करें ✓" : "Confirm booking ✓"}
       </button>
       <p className="mt-2.5 text-center text-[11.5px] font-bold text-[#8a8a8a]">Free cancellation within 10 mins • SOS & support always on</p>
@@ -245,13 +457,33 @@ function ConfirmBooking({ go, wId, price, schedule, date, address, lang }: { go:
 /* ================= TRACKING ================= */
 const stages = ["Requested", "Accepted", "On the Way", "In Progress", "Completed"];
 
-export function Tracking({ go, workerId, price }: { go: (p: Page, w?: string) => void; lang: "en" | "hi"; workerId: string; price: number }) {
+export function Tracking({
+  go, lang, workerId, price = 450, schedule = "asap", date = "Tomorrow, 10:00 AM", address = "B-42, Laxmi Nagar, Delhi 110092",
+}: {
+  go: (p: Page, widOrOpts?: any) => void; lang: "en" | "hi"; workerId: string; price: number;
+  schedule?: "asap" | "later"; date?: string; address?: string;
+}) {
   const w = workers.find((x) => x.id === workerId) ?? workers[0];
+  const cfg = serviceJobConfigs[w.serviceId] || serviceJobConfigs["plumbing"];
+
   const [stage, setStage] = useState(2);
   const [chatOpen, setChatOpen] = useState(false);
-  const [chat, setChat] = useState([{ from: "worker", text: "Namaste! I'm nearby, reaching in 8 mins. 🙏" }]);
+  const [chat, setChat] = useState([
+    { from: "worker", text: `Namaste! Reaching for your ${w.service.toLowerCase()} service in 8 mins. 🙏` }
+  ]);
   const [msg, setMsg] = useState("");
   const [proof, setProof] = useState(false);
+  const [partsApproved, setPartsApproved] = useState(false);
+  const [showCallModal, setShowCallModal] = useState(false);
+  const [showSOSModal, setShowSOSModal] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [sosActive, setSosActive] = useState(false);
+  const [reportText, setReportText] = useState("");
+  const [reportSubmitted, setReportSubmitted] = useState(false);
+  const [toast, setToast] = useState("");
+
+  const partsPrice = partsApproved ? 120 : 0;
+  const currentTotal = price + partsPrice;
 
   useEffect(() => {
     if (stage >= 4) return;
@@ -259,11 +491,45 @@ export function Tracking({ go, workerId, price }: { go: (p: Page, w?: string) =>
     return () => clearTimeout(t);
   }, [stage]);
 
+  const triggerSOS = () => {
+    setSosActive(true);
+    setToast("🚨 SOS Alert sent to Police (112) & Saharaa 24x7 Safety Response Team");
+    setTimeout(() => setToast(""), 4000);
+  };
+
+  const handleReportSubmit = () => {
+    setReportSubmitted(true);
+    setToast("Issue report filed (#REP-8421). Our admin team is reviewing it.");
+    setTimeout(() => {
+      setToast("");
+      setShowReportModal(false);
+      setReportSubmitted(false);
+    }, 2500);
+  };
+
+  const handleSendChat = () => {
+    if (!msg.trim()) return;
+    setChat((c) => [...c, { from: "me", text: msg.trim() }]);
+    setMsg("");
+    setTimeout(() => {
+      setChat((c) => [...c, { from: "worker", text: "Ji, noted! Reach quickly. 👍" }]);
+    }, 1000);
+  };
+
+  const handleVoiceSim = () => {
+    setToast("🎙️ Listening... Recording voice note");
+    setTimeout(() => {
+      setChat((c) => [...c, { from: "me", text: "Please call when you reach gate. (Voice Note)" }]);
+      setToast("Voice note sent to " + w.name.split(" ")[0]);
+      setTimeout(() => setToast(""), 2000);
+    }, 1500);
+  };
+
   return (
     <div className="page-enter mx-auto max-w-6xl px-4 pb-32 pt-5 sm:px-6 md:pb-16">
       <div className="flex items-center justify-between">
         <button onClick={() => go("customer-home")} className="flex items-center gap-1.5 rounded-full bg-white px-3.5 py-2 text-[13px] font-bold ring-1 ring-[#1B4332]/12"><ChevronLeft className="h-4 w-4" /> Home</button>
-        <span className="rounded-full bg-[#1B4332] px-3.5 py-1.5 text-[12px] font-extrabold text-white">Booking #SH-2481 • ₹{price}</span>
+        <span className="rounded-full bg-[#1B4332] px-3.5 py-1.5 text-[12px] font-extrabold text-white">Booking #SH-2481 • {w.service} • ₹{currentTotal}</span>
       </div>
 
       <div className="mt-4 grid items-start gap-5 lg:grid-cols-[1fr_380px]">
@@ -278,12 +544,17 @@ export function Tracking({ go, workerId, price }: { go: (p: Page, w?: string) =>
               </div>
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-1.5 text-[17px] font-extrabold">{w.name} <BadgeCheck className="h-4.5 w-4.5 fill-[#52B788] text-white" /></p>
-                <p className="text-[12.5px] font-semibold text-white/70">{w.service} • ◆ {w.trustDNA} TrustDNA • {w.rating} ★</p>
-                <p className="mt-1.5 flex items-center gap-1.5 text-[13px] font-extrabold text-[#F4A261]"><Navigation className="h-4 w-4" /> {stage < 2 ? `Arriving ${w.eta}` : stage === 2 ? "Arriving in ~8 mins" : stage === 3 ? "At your home — work started" : "Work completed ✓"}</p>
+                <p className="text-[12.5px] font-semibold text-white/70">{w.service} • {cfg.title} • ◆ {w.trustDNA} TrustDNA • {w.rating} ★</p>
+                <p className="mt-1.5 flex items-center gap-1.5 text-[13px] font-extrabold text-[#F4A261]">
+                  <Navigation className="h-4 w-4" />
+                  {schedule === "asap"
+                    ? (stage < 2 ? `Arriving ${w.eta}` : stage === 2 ? "Arriving in ~8 mins" : stage === 3 ? "At your home — work started" : "Work completed ✓")
+                    : (stage < 2 ? `Slot: ${date}` : stage === 2 ? `Arriving for scheduled slot (${date})` : stage === 3 ? "At your home — work started" : "Work completed ✓")}
+                </p>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => setChatOpen(!chatOpen)} className="grid h-12 w-12 place-items-center rounded-full bg-white/10 ring-1 ring-white/20 transition hover:bg-white/20"><MessageCircle className="h-5 w-5" /></button>
-                <button className="grid h-12 w-12 place-items-center rounded-full bg-[#E76F51] transition hover:bg-[#c65a3a]"><Phone className="h-5 w-5" /></button>
+                <button onClick={() => setChatOpen(!chatOpen)} aria-label="Open chat" className="grid h-12 w-12 place-items-center rounded-full bg-white/10 ring-1 ring-white/20 transition hover:bg-white/20"><MessageCircle className="h-5 w-5" /></button>
+                <button onClick={() => setShowCallModal(true)} aria-label="Call worker" className="grid h-12 w-12 place-items-center rounded-full bg-[#E76F51] transition hover:bg-[#c65a3a]"><Phone className="h-5 w-5" /></button>
               </div>
             </div>
             {/* progress */}
@@ -303,14 +574,14 @@ export function Tracking({ go, workerId, price }: { go: (p: Page, w?: string) =>
             </div>
             {/* demo stepper */}
             <div className="relative mt-4 flex flex-wrap items-center gap-2 rounded-2xl bg-white/8 p-2.5 ring-1 ring-white/10">
-              <span className="px-2 text-[11px] font-extrabold uppercase tracking-wide text-white/50">Demo: simulate →</span>
+              <span className="px-2 text-[11px] font-extrabold uppercase tracking-wide text-white/50">Simulate status:</span>
               {stages.map((s, i) => (
                 <button key={s} onClick={() => setStage(i)} className={`rounded-full px-3 py-1.5 text-[11.5px] font-extrabold transition ${stage === i ? "bg-[#F4A261] text-[#122b21]" : "bg-white/10 text-white/70 hover:bg-white/20"}`}>{s}</button>
               ))}
             </div>
           </div>
 
-          {/* map-ish */}
+          {/* Map tracking */}
           <div className="dot-grid relative mt-4 h-56 overflow-hidden rounded-[22px] bg-[#EDE8DA] ring-1 ring-[#1B4332]/12">
             <svg className="absolute inset-0 h-full w-full" preserveAspectRatio="none" viewBox="0 0 800 300">
               <path d="M-20,150 C200,120 350,200 820,140" stroke="#fff" strokeWidth="30" fill="none" strokeLinecap="round" />
@@ -328,25 +599,37 @@ export function Tracking({ go, workerId, price }: { go: (p: Page, w?: string) =>
             <p className="absolute bottom-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#122b21] px-4 py-1.5 text-[11.5px] font-extrabold text-white">Live location shared with family ✓</p>
           </div>
 
-          {/* proof of work */}
+          {/* Proof of Work */}
           <div className="mt-4 rounded-[22px] bg-white p-5 ring-1 ring-[#1B4332]/10 card-shadow sm:p-6">
-            <p className="flex items-center gap-2 text-[15px] font-extrabold"><Camera className="h-5 w-5 text-[#E76F51]" /> Proof of Work {stage >= 3 && <span className="rounded-full bg-[#EFFAF1] px-2.5 py-0.5 text-[11px] text-[#1B4332]">photos added</span>}</p>
+            <p className="flex items-center gap-2 text-[15px] font-extrabold">
+              <Camera className="h-5 w-5 text-[#E76F51]" /> Proof of Work ({w.service}) {stage >= 3 && <span className="rounded-full bg-[#EFFAF1] px-2.5 py-0.5 text-[11px] text-[#1B4332]">photos confirmed</span>}
+            </p>
             {stage >= 3 ? (
               <div className="animate-fade-in mt-3">
                 <div className="grid grid-cols-2 gap-3">
-                  <figure className="overflow-hidden rounded-2xl ring-1 ring-[#1B4332]/12"><img src="https://images.pexels.com/photos/19140578/pexels-photo-19140578.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200" alt="Before" className="h-36 w-full object-cover" /><figcaption className="bg-[#FAF9F6] py-1.5 text-center text-[11px] font-extrabold text-[#8a8a8a]">BEFORE</figcaption></figure>
-                  <figure className="overflow-hidden rounded-2xl ring-2 ring-[#2D6A4F]"><img src="https://images.pexels.com/photos/29226620/pexels-photo-29226620.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200" alt="After" className="h-36 w-full object-cover" /><figcaption className="bg-[#EFFAF1] py-1.5 text-center text-[11px] font-extrabold text-[#1B4332]">AFTER ✓ FIXED</figcaption></figure>
+                  <figure className="overflow-hidden rounded-2xl ring-1 ring-[#1B4332]/12">
+                    <img src={cfg.photos[0]} alt="Before work" className="h-36 w-full object-cover" />
+                    <figcaption className="bg-[#FAF9F6] py-1.5 text-center text-[11px] font-extrabold text-[#8a8a8a]">BEFORE</figcaption>
+                  </figure>
+                  <figure className="overflow-hidden rounded-2xl ring-2 ring-[#2D6A4F]">
+                    <img src={cfg.photos[1]} alt="After work" className="h-36 w-full object-cover" />
+                    <figcaption className="bg-[#EFFAF1] py-1.5 text-center text-[11px] font-extrabold text-[#1B4332]">AFTER ✓ COMPLETED</figcaption>
+                  </figure>
                 </div>
                 <label className="mt-3 flex cursor-pointer items-start gap-2.5 rounded-2xl bg-[#FAF9F6] p-3.5 ring-1 ring-[#1B4332]/10">
                   <input type="checkbox" checked={proof} onChange={() => setProof(!proof)} className="mt-0.5 h-5 w-5 accent-[#1B4332]" />
-                  <span className="text-[13px] font-bold">I confirm the work is done properly and photos match reality. <span className="text-[#8a8a8a]">(Required before payment)</span></span>
+                  <span className="text-[13px] font-bold">I confirm the work is completed to satisfaction and matches photos. <span className="text-[#8a8a8a]">(Required before releasing payment)</span></span>
                 </label>
-                <button disabled={!proof} onClick={() => go("payment", w.id)} className={`mt-3 w-full rounded-2xl py-4 text-[15px] font-extrabold text-white transition ${proof ? "bg-[#1B4332] hover:bg-[#2D6A4F]" : "cursor-not-allowed bg-[#d8cfbe]"}`}>
-                  Confirm & Pay ₹{price} →
+                <button
+                  disabled={!proof}
+                  onClick={() => go("payment", { workerId: w.id, price, partsApproved, schedule, date, address })}
+                  className={`mt-3 w-full rounded-2xl py-4 text-[15px] font-extrabold text-white transition ${proof ? "bg-[#1B4332] hover:bg-[#2D6A4F]" : "cursor-not-allowed bg-[#d8cfbe]"}`}
+                >
+                  Confirm & Pay ₹{currentTotal} →
                 </button>
               </div>
             ) : (
-              <p className="mt-2 text-[13px] font-semibold text-[#4A4A4A]">{w.name.split(" ")[0]} will upload before/after photos once work starts. You'll confirm before paying — no photo, no payment.</p>
+              <p className="mt-2 text-[13px] font-semibold text-[#4A4A4A]">{w.name.split(" ")[0]} will upload verified before/after photos once work commences at your home.</p>
             )}
           </div>
         </div>
@@ -354,22 +637,48 @@ export function Tracking({ go, workerId, price }: { go: (p: Page, w?: string) =>
         {/* side: invoice + safety */}
         <aside className="space-y-4 lg:sticky lg:top-24">
           <div className="rounded-[22px] bg-white p-5 ring-1 ring-[#1B4332]/10 card-shadow">
-            <p className="flex items-center gap-2 text-[14px] font-extrabold"><FileText className="h-4 w-4" /> Live invoice</p>
-            <div className="mt-3 space-y-1.5 text-[13px] font-semibold text-[#4A4A4A]">
-              <p className="flex justify-between">FairFare locked price <span className="font-extrabold text-[#1A1A1A]">₹{price}</span></p>
-              <p className="flex justify-between">Spare parts (bill attached) <span className="font-extrabold text-[#1A1A1A]">₹120</span></p>
-              <p className="flex justify-between">Platform fee <span className="font-extrabold text-[#2D6A4F]">FREE</span></p>
-              <p className="flex justify-between border-t border-dashed border-[#1B4332]/15 pt-2 text-[15px] font-extrabold text-[#1A1A1A]">Total <span className="text-[#1B4332]">₹{price + 120}</span></p>
+            <p className="flex items-center gap-2 text-[14px] font-extrabold"><FileText className="h-4 w-4" /> Live invoice breakdown</p>
+            <div className="mt-3 space-y-2 text-[13px] font-semibold text-[#4A4A4A]">
+              <p className="flex justify-between">
+                FairFare agreed service price <span className="font-extrabold text-[#1A1A1A]">₹{price}</span>
+              </p>
+              
+              <label className="flex items-center justify-between rounded-xl bg-[#FAF9F6] p-2 text-xs font-bold ring-1 ring-[#1B4332]/8 cursor-pointer">
+                <span className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={partsApproved}
+                    onChange={(e) => setPartsApproved(e.target.checked)}
+                    className="accent-[#1B4332]"
+                  />
+                  Extra parts/supplies (receipt verified)
+                </span>
+                <span className="font-extrabold text-[#1A1A1A]">₹{partsPrice}</span>
+              </label>
+
+              <p className="flex justify-between">
+                Platform fee <span className="font-extrabold text-[#2D6A4F]">FREE (₹0)</span>
+              </p>
+              
+              <p className="flex justify-between border-t border-dashed border-[#1B4332]/15 pt-2 text-[15px] font-extrabold text-[#1A1A1A]">
+                Total line items <span className="text-[#1B4332]">₹{currentTotal}</span>
+              </p>
             </div>
           </div>
+
           <div className="rounded-[22px] bg-[#FFF1E8] p-5 ring-1 ring-[#E76F51]/25">
             <p className="flex items-center gap-2 text-[14px] font-extrabold text-[#9c3d1e]"><AlertTriangle className="h-4 w-4" /> Safety centre</p>
             <div className="mt-3 grid grid-cols-2 gap-2">
-              <button className="rounded-2xl bg-[#E76F51] py-3 text-[13px] font-extrabold text-white">SOS Alert</button>
-              <button className="rounded-2xl bg-white py-3 text-[13px] font-extrabold text-[#9c3d1e] ring-1 ring-[#E76F51]/30">Report issue</button>
+              <button onClick={() => setShowSOSModal(true)} className="rounded-2xl bg-[#E76F51] py-3 text-[13px] font-extrabold text-white hover:bg-[#c65a3a]">
+                SOS Alert
+              </button>
+              <button onClick={() => setShowReportModal(true)} className="rounded-2xl bg-white py-3 text-[13px] font-extrabold text-[#9c3d1e] ring-1 ring-[#E76F51]/30 hover:bg-[#FAF9F6]">
+                Report issue
+              </button>
             </div>
-            <p className="mt-2.5 text-[11.5px] font-semibold text-[#9c3d1e]/80">Job GPS + worker ID shared with 2 family contacts. Support: 1800-SAHARAA</p>
+            <p className="mt-2.5 text-[11.5px] font-semibold text-[#9c3d1e]/80">Job GPS + worker ID shared with your emergency contacts. Saharaa Safety Helpline: 1800-SAHARAA</p>
           </div>
+
           {/* chat */}
           {chatOpen && (
             <div className="animate-slide-up overflow-hidden rounded-[22px] bg-white ring-1 ring-[#1B4332]/12 card-shadow-lg">
@@ -380,35 +689,150 @@ export function Tracking({ go, workerId, price }: { go: (p: Page, w?: string) =>
                 ))}
               </div>
               <div className="flex gap-2 p-2.5">
-                <input value={msg} onChange={(e) => setMsg(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && msg) { setChat([...chat, { from: "me", text: msg }]); setMsg(""); setTimeout(() => setChat((c) => [...c, { from: "worker", text: "Ji, noted! 👍" }]), 1200); } }} placeholder="Type…" className="h-10 w-full rounded-full bg-[#FAF9F6] px-4 text-[13px] font-semibold outline-none ring-1 ring-[#1B4332]/12" />
-                <button onClick={() => { if (msg) { setChat([...chat, { from: "me", text: msg }]); setMsg(""); } }} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#1B4332] text-white"><Mic className="h-4 w-4" /></button>
+                <input
+                  value={msg}
+                  onChange={(e) => setMsg(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSendChat()}
+                  placeholder="Type message…"
+                  className="h-10 w-full rounded-full bg-[#FAF9F6] px-4 text-[13px] font-semibold outline-none ring-1 ring-[#1B4332]/12"
+                />
+                <button onClick={handleSendChat} aria-label="Send" className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#1B4332] text-white">
+                  <Send className="h-4 w-4" />
+                </button>
+                <button onClick={handleVoiceSim} aria-label="Voice" className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#E76F51] text-white">
+                  <Mic className="h-4 w-4" />
+                </button>
               </div>
             </div>
           )}
         </aside>
       </div>
+
+      {/* SOS Modal */}
+      {showSOSModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-sm rounded-[24px] bg-white p-6 shadow-2xl ring-1 ring-[#E76F51]/30 text-center animate-slide-up">
+            <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-[#FFF1E8] text-[#E76F51]">
+              <AlertTriangle className="h-8 w-8" />
+            </div>
+            <h3 className="mt-3 text-[19px] font-extrabold text-[#9c3d1e]">Saharaa 24x7 Safety Centre</h3>
+            <p className="mt-1 text-xs font-semibold text-[#4A4A4A]">If you feel unsafe, assistance is immediate and verified.</p>
+            <div className="mt-4 space-y-2 text-left text-xs font-bold">
+              <a href="tel:112" className="flex items-center justify-between rounded-2xl bg-[#E76F51] p-3 text-white">
+                <span>🚨 Police Emergency (112)</span>
+                <span className="rounded-full bg-white/20 px-2.5 py-1 text-[11px]">Dial</span>
+              </a>
+              <a href="tel:18007242722" className="flex items-center justify-between rounded-2xl bg-[#1B4332] p-3 text-white">
+                <span>🛡️ Saharaa Safety Hotline</span>
+                <span className="rounded-full bg-white/20 px-2.5 py-1 text-[11px]">Call</span>
+              </a>
+              <button onClick={triggerSOS} className="w-full rounded-2xl bg-[#FFF1E8] p-3 text-center text-[#9c3d1e] ring-1 ring-[#E76F51]/30">
+                {sosActive ? "✓ SOS Broadcast Active" : "Trigger Emergency Silent Alert"}
+              </button>
+            </div>
+            <button onClick={() => setShowSOSModal(false)} className="mt-4 text-xs font-bold text-[#8a8a8a]">Close</button>
+          </div>
+        </div>
+      )}
+
+      {/* Report Modal */}
+      {showReportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-sm rounded-[24px] bg-white p-6 shadow-2xl ring-1 ring-[#1B4332]/10 animate-slide-up">
+            <h3 className="text-[17px] font-extrabold text-[#1A1A1A]">Report an issue</h3>
+            <p className="mt-1 text-xs font-semibold text-[#4A4A4A]">Booking #SH-2481 with {w.name}</p>
+            <div className="mt-3 space-y-2 text-xs font-bold">
+              <select className="w-full rounded-xl bg-[#FAF9F6] p-2.5 ring-1 ring-[#1B4332]/12 outline-none">
+                <option>Price dispute / asking cash beyond locked price</option>
+                <option>Worker arrived excessively late</option>
+                <option>Poor workmanship / unfinished work</option>
+                <option>Unprofessional behavior</option>
+              </select>
+              <textarea
+                value={reportText}
+                onChange={(e) => setReportText(e.target.value)}
+                placeholder="Describe what went wrong in detail…"
+                rows={3}
+                className="w-full rounded-xl bg-[#FAF9F6] p-2.5 ring-1 ring-[#1B4332]/12 outline-none"
+              />
+              <button
+                disabled={reportSubmitted}
+                onClick={handleReportSubmit}
+                className="w-full rounded-2xl bg-[#E76F51] py-3 text-xs font-extrabold text-white"
+              >
+                {reportSubmitted ? "Submitting report…" : "Submit report for investigation"}
+              </button>
+              <button onClick={() => setShowReportModal(false)} className="w-full py-1 text-center text-xs font-bold text-[#8a8a8a]">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Call Worker Modal */}
+      {showCallModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-sm rounded-[24px] bg-white p-6 shadow-2xl ring-1 ring-[#1B4332]/10 text-center animate-slide-up">
+            <img src={w.photo} alt={w.name} className="mx-auto h-20 w-20 rounded-full object-cover ring-4 ring-[#52B788]" />
+            <h3 className="mt-3 text-[18px] font-extrabold">{w.name}</h3>
+            <p className="text-xs font-semibold text-[#4A4A4A]">{w.service} • Arriving {w.eta}</p>
+            <div className="mt-4 rounded-2xl bg-[#EFFAF1] p-3 text-left text-xs font-bold text-[#1B4332] ring-1 ring-[#2D6A4F]/20">
+              <ShieldCheck className="inline h-4 w-4 text-[#2D6A4F] mr-1.5" />
+              Connected via Saharaa Privacy Masking Line. Your real number stays private.
+            </div>
+            <p className="mt-3 text-xs font-bold text-[#4A4A4A]">Masked call number: <span className="font-extrabold text-[#1A1A1A]">+91 98118-XX482</span></p>
+            <div className="mt-4 grid gap-2">
+              <a href="tel:18007242722" className="block w-full rounded-2xl bg-[#1B4332] py-3.5 text-xs font-extrabold text-white">
+                📞 Call {w.name.split(" ")[0]} Now
+              </a>
+              <button onClick={() => setShowCallModal(false)} className="text-xs font-bold text-[#8a8a8a]">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className="fixed bottom-24 left-1/2 z-50 w-[calc(100%-32px)] max-w-md -translate-x-1/2 rounded-2xl bg-[#122b21] px-5 py-3.5 text-center text-xs font-bold text-white shadow-2xl animate-slide-up">
+          {toast}
+        </div>
+      )}
+
       <CustomerBottomNav page="tracking" go={go} onBook={() => go("booking", w.id)} />
     </div>
   );
 }
 
 /* ================= PAYMENT & REVIEW ================= */
-export function PaymentReview({ go, lang, workerId, price }: { go: (p: Page, w?: string) => void; lang: "en" | "hi"; workerId: string; price: number }) {
+export function PaymentReview({
+  go, lang, workerId, price = 450, partsApproved = false, schedule = "asap", date = "Tomorrow, 10:00 AM", address = "B-42, Laxmi Nagar, Delhi 110092",
+}: {
+  go: (p: Page, widOrOpts?: any) => void; lang: "en" | "hi"; workerId: string; price: number;
+  partsApproved?: boolean; schedule?: "asap" | "later"; date?: string; address?: string;
+}) {
   const w = workers.find((x) => x.id === workerId) ?? workers[0];
+  const cfg = serviceJobConfigs[w.serviceId] || serviceJobConfigs["plumbing"];
+
   const [stars, setStars] = useState(5);
   const [tip, setTip] = useState(50);
   const [review, setReview] = useState("");
   const [method, setMethod] = useState("UPI");
   const [paid, setPaid] = useState(false);
-  const total = price + 120 + tip;
+
+  const partsCost = partsApproved ? 120 : 0;
+  const subtotal = price + partsCost;
+  const total = subtotal + tip;
 
   if (paid) {
     return (
       <div className="page-enter mx-auto max-w-lg px-4 pb-28 pt-10 text-center sm:px-6">
         <div className="animate-slide-up rounded-[24px] bg-white p-8 ring-1 ring-[#1B4332]/10 card-shadow-lg">
-          <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-[#EFFAF1]"><CheckCircle2 className="h-10 w-10 text-[#2D6A4F]" /></div>
+          <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-[#EFFAF1]">
+            <CheckCircle2 className="h-10 w-10 text-[#2D6A4F]" />
+          </div>
           <h1 className="font-display mt-4 text-[26px] font-black">Shukriya! 🙏</h1>
-          <p className="mt-2 text-[14px] font-medium text-[#4A4A4A]">₹{total} paid to {w.name}. <span className="font-bold text-[#2D6A4F]">₹{tip} tip goes 100% to {w.name.split(" ")[0]}.</span> You helped a local family earn today.</p>
+          <p className="mt-2 text-[14px] font-medium text-[#4A4A4A]">
+            ₹{total} paid to {w.name} for {w.service.toLowerCase()} ({cfg.title}).{" "}
+            {tip > 0 && <span className="font-bold text-[#2D6A4F]">₹{tip} tip reaches {w.name.split(" ")[0]} with zero platform deduction.</span>}
+          </p>
           <div className="mt-5 rounded-2xl bg-[#EFFAF1] p-4 text-left ring-1 ring-[#2D6A4F]/20">
             <p className="text-[12px] font-extrabold uppercase tracking-wide text-[#1B4332]">Your livelihood impact</p>
             <p className="mt-1 text-[13.5px] font-bold">This was {w.name.split(" ")[0]}'s <span className="text-[#2D6A4F]">{w.jobs + 1}th job</span> on Saharaa. 68% of your payment stays in your neighbourhood.</p>
@@ -434,13 +858,17 @@ export function PaymentReview({ go, lang, workerId, price }: { go: (p: Page, w?:
             <p className="flex items-center justify-between text-[15px] font-extrabold">Digital invoice <span className="rounded-full bg-[#EFFAF1] px-2.5 py-1 text-[11px] text-[#1B4332]">#SH-2481 • GST incl.</span></p>
             <div className="mt-3 flex items-center gap-3 rounded-2xl bg-[#FAF9F6] p-3.5 ring-1 ring-[#1B4332]/8">
               <img src={w.photo} alt={w.name} className="h-12 w-12 rounded-xl object-cover" />
-              <div className="flex-1"><p className="flex items-center gap-1 text-[13.5px] font-extrabold">{w.name} <BadgeCheck className="h-3.5 w-3.5 fill-[#52B788] text-white" /></p><p className="text-[11.5px] font-semibold text-[#4A4A4A]">Tap repair • 45 mins • Photos confirmed ✓</p></div>
+              <div className="flex-1">
+                <p className="flex items-center gap-1 text-[13.5px] font-extrabold">{w.name} <BadgeCheck className="h-3.5 w-3.5 fill-[#52B788] text-white" /></p>
+                <p className="text-[11.5px] font-semibold text-[#4A4A4A]">{w.service} • {cfg.title} • Proof confirmed ✓</p>
+              </div>
               <TrustRing score={w.trustDNA} size={48} stroke={5} />
             </div>
             <div className="mt-3 space-y-1.5 text-[13.5px] font-semibold text-[#4A4A4A]">
-              <p className="flex justify-between">FairFare locked price <span className="font-extrabold text-[#1A1A1A]">₹{price}</span></p>
-              <p className="flex justify-between">Spare parts (receipt ✓) <span className="font-extrabold text-[#1A1A1A]">₹120</span></p>
-              <p className="flex justify-between">Platform fee <span className="font-extrabold text-[#2D6A4F]">FREE</span></p>
+              <p className="flex justify-between">FairFare agreed price <span className="font-extrabold text-[#1A1A1A]">₹{price}</span></p>
+              <p className="flex justify-between">Approved parts / supplies <span className="font-extrabold text-[#1A1A1A]">₹{partsCost}</span></p>
+              <p className="flex justify-between">Platform fee <span className="font-extrabold text-[#2D6A4F]">FREE (₹0)</span></p>
+              <p className="flex justify-between border-t border-dashed border-[#1B4332]/15 pt-2 text-[14px] font-extrabold text-[#1A1A1A]">Subtotal <span className="text-[#1A1A1A]">₹{subtotal}</span></p>
             </div>
             <p className="mt-4 text-[12px] font-extrabold uppercase tracking-wide text-[#4A4A4A]">Add a tip? <span className="text-[#2D6A4F]">100% goes to {w.name.split(" ")[0]}</span></p>
             <div className="mt-2 grid grid-cols-4 gap-2">
@@ -455,6 +883,7 @@ export function PaymentReview({ go, lang, workerId, price }: { go: (p: Page, w?:
               ))}
             </div>
           </div>
+
           {/* review */}
           <div className="rounded-[22px] bg-white p-5 ring-1 ring-[#1B4332]/10 card-shadow sm:p-6">
             <p className="text-[15px] font-extrabold">Rate {w.name.split(" ")[0]}'s work</p>
@@ -474,11 +903,12 @@ export function PaymentReview({ go, lang, workerId, price }: { go: (p: Page, w?:
             </div>
           </div>
         </div>
+
         <aside className="rounded-[22px] bg-[#122b21] p-5 text-white card-shadow-lg sm:p-6 lg:sticky lg:top-24">
           <Stars rating={stars} />
-          <p className="mt-3 flex justify-between text-[13px] font-semibold text-white/70">Subtotal <span className="text-white font-extrabold">₹{price + 120}</span></p>
-          <p className="mt-1 flex justify-between text-[13px] font-semibold text-white/70">Tip (to worker) <span className="text-[#F4A261] font-extrabold">₹{tip}</span></p>
-          <p className="font-display mt-2 flex justify-between border-t border-white/10 pt-3 text-[24px] font-black">Total <span>₹{total}</span></p>
+          <p className="mt-3 flex justify-between text-[13px] font-semibold text-white/70">Subtotal <span className="text-white font-extrabold">₹{subtotal}</span></p>
+          <p className="mt-1 flex justify-between text-[13px] font-semibold text-white/70">Tip (100% to worker) <span className="text-[#F4A261] font-extrabold">₹{tip}</span></p>
+          <p className="font-display mt-2 flex justify-between border-t border-white/10 pt-3 text-[24px] font-black">Total to pay <span>₹{total}</span></p>
           <button onClick={() => setPaid(true)} className="mt-4 w-full rounded-2xl bg-[#E76F51] py-4 text-[15px] font-extrabold text-white transition hover:bg-[#F4A261] hover:text-[#122b21] active:scale-[0.98]">
             Pay ₹{total} via {method} →
           </button>

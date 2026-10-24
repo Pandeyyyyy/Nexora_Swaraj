@@ -2,11 +2,12 @@ import {
   BadgeCheck, Bell, Brush, ChefHat, ChevronRight, Hammer, Leaf, MapPin, Mic,
   Refrigerator, Search, ShieldCheck, Sparkles, Star, Wrench, Zap, Globe, Menu, X,
   Clock, Navigation, MessageCircle, Phone, Home, CalendarCheck, User, LayoutGrid,
-  Wallet, Briefcase, BarChart3, HeartHandshake, Languages
+  Wallet, Briefcase, BarChart3, HeartHandshake, Languages, Database, CheckCircle2, AlertCircle, RefreshCw
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { ReactNode } from "react";
 import { workers } from "../data";
+import { checkSupabaseConnection, type BackendHealthReport } from "../lib/supabaseHealth";
 
 /* ---------- Brand ---------- */
 export function Logo({ dark = false, compact = false }: { dark?: boolean; compact?: boolean }) {
@@ -46,13 +47,22 @@ export type Page =
   | "worker-jobs" | "worker-earnings" | "admin" | "impact";
 
 export function TopNav({
-  page, go, lang, setLang, role, location,
+  page, go, lang, setLang, role, location, setLocation,
 }: {
-  page: Page; go: (p: Page) => void; lang: "en" | "hi"; setLang: (l: "en" | "hi") => void;
-  role: string | null; location: string;
+  page: Page; go: (p: Page, wid?: string) => void; lang: "en" | "hi"; setLang: (l: "en" | "hi") => void;
+  role: string | null; location: string; setLocation?: (loc: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [locOpen, setLocOpen] = useState(false);
   const isApp = !["landing", "auth", "impact"].includes(page);
+  const locations = [
+    "Laxmi Nagar, Delhi",
+    "Preet Vihar, Delhi",
+    "Mayur Vihar, Delhi",
+    "Nirman Vihar, Delhi",
+    "Akshardham, Delhi",
+  ];
+
   return (
     <header className="sticky top-0 z-40 border-b border-[#1B4332]/10 bg-[#FAF9F6]/90 backdrop-blur-xl">
       <div className="mx-auto flex h-[68px] max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
@@ -60,14 +70,35 @@ export function TopNav({
           <Logo />
         </button>
 
-        <button
-          onClick={() => go("workers")}
-          className="hidden items-center gap-1.5 rounded-full bg-white px-3.5 py-2 text-[13px] font-semibold text-[#1A1A1A] ring-1 ring-[#1B4332]/10 transition hover:ring-[#1B4332]/30 md:flex"
-        >
-          <MapPin className="h-4 w-4 text-[#E76F51]" />
-          {location}
-          <ChevronRight className="h-3.5 w-3.5 rotate-90 text-[#4A4A4A]" />
-        </button>
+        <div className="relative hidden md:block">
+          <button
+            onClick={() => setLocOpen(!locOpen)}
+            className="flex items-center gap-1.5 rounded-full bg-white px-3.5 py-2 text-[13px] font-semibold text-[#1A1A1A] ring-1 ring-[#1B4332]/10 transition hover:ring-[#1B4332]/30 active:scale-95"
+            aria-label="Change location"
+          >
+            <MapPin className="h-4 w-4 text-[#E76F51]" />
+            {location}
+            <ChevronRight className={`h-3.5 w-3.5 text-[#4A4A4A] transition ${locOpen ? "-rotate-90" : "rotate-90"}`} />
+          </button>
+          {locOpen && (
+            <div className="animate-fade-in absolute left-0 top-12 z-50 w-56 rounded-2xl bg-white p-2 shadow-xl ring-1 ring-[#1B4332]/10">
+              <p className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-[#8a8a8a]">Select area</p>
+              {locations.map((loc) => (
+                <button
+                  key={loc}
+                  onClick={() => {
+                    if (setLocation) setLocation(loc);
+                    setLocOpen(false);
+                  }}
+                  className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-[12.5px] font-bold transition ${location === loc ? "bg-[#1B4332] text-white" : "text-[#1A1A1A] hover:bg-[#FAF9F6]"}`}
+                >
+                  <MapPin className="h-3.5 w-3.5 shrink-0 text-[#E76F51]" />
+                  {loc}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         <nav className="hidden items-center gap-1 text-[14px] font-semibold text-[#4A4A4A] lg:flex">
           <NavLink label={lang === "hi" ? "सेवाएँ खोजें" : "Find Work"} onClick={() => go("customer-home")} />
@@ -113,7 +144,20 @@ export function TopNav({
             <div className="mt-2 flex gap-2 sm:hidden"><LangToggle lang={lang} setLang={setLang} /></div>
           </div>
           {isApp && (
-            <p className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-[#4A4A4A]"><MapPin className="h-3.5 w-3.5 text-[#E76F51]" />{location}</p>
+            <div className="mt-3">
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-[#4A4A4A]"><MapPin className="h-3.5 w-3.5 text-[#E76F51]" />{location}</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {locations.map((loc) => (
+                  <button
+                    key={loc}
+                    onClick={() => { if (setLocation) setLocation(loc); }}
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 ${location === loc ? "bg-[#1B4332] text-white ring-[#1B4332]" : "bg-white text-[#4A4A4A] ring-[#1B4332]/10"}`}
+                  >
+                    {loc.split(",")[0]}
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       )}
@@ -144,7 +188,17 @@ export function ServiceIcon({ icon, className = "h-6 w-6" }: { icon: string; cla
 }
 
 /* ---------- TrustDNA ---------- */
-export function TrustRing({ score, size = 64, stroke = 7, dark = false }: { score: number; size?: number; stroke?: number; dark?: boolean }) {
+export function TrustRing({ score, size = 64, stroke = 7, dark = false }: { score?: number | null; size?: number; stroke?: number; dark?: boolean }) {
+  if (score === null || score === undefined) {
+    return (
+      <div className="relative shrink-0 flex items-center justify-center rounded-full border border-dashed border-[#1B4332]/25 p-1 text-center" style={{ width: size, height: size }} title="TrustDNA: Not enough data">
+        <div className="leading-none">
+          <p className={`font-extrabold ${dark ? "text-white/80" : "text-[#1B4332]"}`} style={{ fontSize: Math.max(10, size * 0.22) }}>--</p>
+          <p className={`mt-0.5 font-bold tracking-tight ${dark ? "text-white/60" : "text-[#4A4A4A]"}`} style={{ fontSize: Math.max(7, size * 0.14) }}>Not enough data</p>
+        </div>
+      </div>
+    );
+  }
   const r = (size - stroke) / 2;
   const circ = 2 * Math.PI * r;
   const off = circ - (score / 100) * circ;
@@ -167,7 +221,15 @@ export function TrustRing({ score, size = 64, stroke = 7, dark = false }: { scor
   );
 }
 
-export function TrustBadge({ score, compact = false }: { score: number; compact?: boolean }) {
+export function TrustBadge({ score, compact = false }: { score?: number | null; compact?: boolean }) {
+  if (score === null || score === undefined) {
+    return (
+      <span className={`inline-flex items-center gap-1 rounded-full bg-[#1B4332]/70 backdrop-blur py-1 px-2.5 font-bold text-white ${compact ? "text-[10px]" : "text-[11px]"}`}>
+        <ShieldCheck className={compact ? "h-3 w-3" : "h-3.5 w-3.5"} />
+        Not enough data
+      </span>
+    );
+  }
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full py-1 pl-1.5 font-extrabold ${compact ? "pr-2.5 text-[11px]" : "pr-3 text-xs"} ${score >= 90 ? "bg-[#1B4332] text-white" : "bg-[#E76F51] text-white"}`}>
       <ShieldCheck className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
@@ -177,7 +239,15 @@ export function TrustBadge({ score, compact = false }: { score: number; compact?
 }
 
 /* ---------- Worker card ---------- */
-export function Stars({ rating, className = "h-3.5 w-3.5" }: { rating: number; className?: string }) {
+export function Stars({ rating, className = "h-3.5 w-3.5" }: { rating?: number | null; className?: string }) {
+  if (rating === null || rating === undefined) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#8a8a8a]" aria-label="No rating yet">
+        <Star className={`${className} text-[#8a8a8a]/40`} />
+        <span>No reviews yet</span>
+      </span>
+    );
+  }
   return (
     <span className="inline-flex items-center gap-0.5" aria-label={`${rating} stars`}>
       {[1, 2, 3, 4, 5].map((i) => (
@@ -246,7 +316,7 @@ export function CustomerBottomNav({ page, go, onBook }: { page: Page; go: (p: Pa
         {items.map((it) => {
           const active = page === it.id || (it.id === "booking" && page === "worker-profile");
           return (
-            <button key={it.id} onClick={() => (it.id === "booking" ? onBook() : go(it.id as Page))}
+            <button key={it.id} onClick={() => (it.id === "booking" ? onBook() : it.id === "payment" ? go("auth") : go(it.id as Page))}
               className={`flex flex-col items-center gap-1 rounded-2xl py-2 text-[10.5px] font-bold transition ${active ? "text-[#1B4332]" : "text-[#8a8a8a]"}`}>
               <span className={`grid h-9 w-12 place-items-center rounded-full transition ${active ? "bg-[#1B4332] text-white" : ""}`}>
                 <it.icon className="h-5 w-5" />
@@ -390,28 +460,183 @@ export function Footer({ go }: { go: (p: Page) => void }) {
 }
 
 export function DemoBar({ go, role, setRole }: { go: (p: Page) => void; role: string | null; setRole: (r: any) => void }) {
+  const [showHealthModal, setShowHealthModal] = useState(false);
+  const [healthReport, setHealthReport] = useState<BackendHealthReport | null>(null);
+  const [loadingHealth, setLoadingHealth] = useState(false);
+
+  const runHealthCheck = async () => {
+    setLoadingHealth(true);
+    try {
+      const res = await checkSupabaseConnection();
+      setHealthReport(res);
+    } catch {
+      // report will be null or error handled inside checkSupabaseConnection
+    } finally {
+      setLoadingHealth(false);
+    }
+  };
+
+  const openDiagnostics = () => {
+    setShowHealthModal(true);
+    if (!healthReport) {
+      runHealthCheck();
+    }
+  };
+
   return (
-    <div className="fixed bottom-[76px] left-1/2 z-40 w-[calc(100%-24px)] max-w-xl -translate-x-1/2 md:bottom-6">
-      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar rounded-full border border-[#1B4332]/15 bg-[#122b21]/95 p-1.5 text-white shadow-2xl backdrop-blur-xl">
-        <span className="hidden shrink-0 pl-3 text-[10px] font-extrabold uppercase tracking-widest text-white/50 sm:block">Demo •</span>
-        {[
-          { id: "landing", label: "Landing" },
-          { id: "customer-home", label: "Customer" },
-          { id: "booking", label: "FairFare" },
-          { id: "tracking", label: "Tracking" },
-          { id: "worker-dashboard", label: "Worker" },
-          { id: "admin", label: "Admin" },
-          { id: "impact", label: "Impact" },
-        ].map((d) => (
-          <button key={d.id} onClick={() => { if (d.id === "worker-dashboard") setRole("worker"); go(d.id as Page); }}
-            className="shrink-0 rounded-full px-3.5 py-2 text-[12px] font-bold transition hover:bg-white/10 active:scale-95">
-            {d.label}
+    <>
+      <div className="fixed bottom-[76px] left-1/2 z-40 w-[calc(100%-24px)] max-w-2xl -translate-x-1/2 md:bottom-6">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar rounded-full border border-[#1B4332]/15 bg-[#122b21]/95 p-1.5 text-white shadow-2xl backdrop-blur-xl">
+          <span className="hidden shrink-0 pl-3 text-[10px] font-extrabold uppercase tracking-widest text-white/50 sm:block">Demo •</span>
+          {[
+            { id: "landing", label: "Landing" },
+            { id: "customer-home", label: "Customer" },
+            { id: "booking", label: "FairFare" },
+            { id: "tracking", label: "Tracking" },
+            { id: "worker-dashboard", label: "Worker" },
+            { id: "admin", label: "Admin" },
+            { id: "impact", label: "Impact" },
+          ].map((d) => (
+            <button key={d.id} onClick={() => { if (d.id === "worker-dashboard") setRole("worker"); go(d.id as Page); }}
+              className="shrink-0 rounded-full px-3.5 py-2 text-[12px] font-bold transition hover:bg-white/10 active:scale-95">
+              {d.label}
+            </button>
+          ))}
+          <button
+            onClick={openDiagnostics}
+            title="Inspect Supabase backend health"
+            className="shrink-0 flex items-center gap-1.5 rounded-full bg-[#2D6A4F]/60 px-3 py-1.5 text-[11px] font-extrabold text-[#52B788] ring-1 ring-[#52B788]/30 hover:bg-[#2D6A4F] transition active:scale-95"
+          >
+            <Database className="h-3 w-3" />
+            <span className="hidden sm:inline">Backend</span>
           </button>
-        ))}
-        <span className="ml-auto hidden shrink-0 items-center gap-1 pr-2 text-[10px] font-bold text-white/40 md:flex">
-          <BarChart3 className="h-3 w-3" /> {role ?? "guest"}
-        </span>
+          <span className="ml-auto hidden shrink-0 items-center gap-1 pr-2 text-[10px] font-bold text-white/40 md:flex">
+            <BarChart3 className="h-3 w-3" /> {role ?? "guest"}
+          </span>
+        </div>
       </div>
-    </div>
+
+      {showHealthModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg overflow-hidden rounded-[24px] bg-white card-shadow-lg animate-fade-in">
+            <div className="flex items-center justify-between bg-[#1B4332] p-5 text-white">
+              <div className="flex items-center gap-2.5">
+                <span className="grid h-8 w-8 place-items-center rounded-xl bg-white/10 text-[#52B788]">
+                  <Database className="h-4 w-4" />
+                </span>
+                <div>
+                  <h3 className="text-[15px] font-extrabold">Supabase Backend Foundation</h3>
+                  <p className="text-[11px] text-white/70">Phase 2A Diagnostic Check</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowHealthModal(false)}
+                className="rounded-full bg-white/10 px-2.5 py-1 text-[12px] font-bold text-white hover:bg-white/20"
+              >
+                Close ✕
+              </button>
+            </div>
+
+            <div className="max-h-[70vh] overflow-y-auto p-5 space-y-3.5">
+              {loadingHealth && !healthReport ? (
+                <div className="py-8 text-center text-[#4A4A4A]">
+                  <RefreshCw className="mx-auto h-6 w-6 animate-spin text-[#1B4332]" />
+                  <p className="mt-2 text-[13px] font-semibold">Running safe connection diagnostic...</p>
+                </div>
+              ) : healthReport ? (
+                <>
+                  <div className="rounded-2xl bg-[#FAF9F6] p-3.5 ring-1 ring-[#1B4332]/10 space-y-3">
+                    {/* 1. Environment Config */}
+                    <div className="flex items-start gap-2.5">
+                      {healthReport.envConfigured ? (
+                        <CheckCircle2 className="h-4 w-4 shrink-0 text-[#2D6A4F] mt-0.5" />
+                      ) : (
+                        <AlertCircle className="h-4 w-4 shrink-0 text-[#E76F51] mt-0.5" />
+                      )}
+                      <div>
+                        <p className="text-[12.5px] font-extrabold text-[#1B4332]">1. Environment Configuration</p>
+                        <p className="text-[11.5px] font-medium text-[#4A4A4A]">{healthReport.details.envMessage}</p>
+                      </div>
+                    </div>
+
+                    {/* 2. Supabase Endpoint */}
+                    <div className="flex items-start gap-2.5">
+                      {healthReport.endpointReachable ? (
+                        <CheckCircle2 className="h-4 w-4 shrink-0 text-[#2D6A4F] mt-0.5" />
+                      ) : (
+                        <AlertCircle className="h-4 w-4 shrink-0 text-[#E76F51] mt-0.5" />
+                      )}
+                      <div>
+                        <p className="text-[12.5px] font-extrabold text-[#1B4332]">2. Endpoint Reachability</p>
+                        <p className="text-[11.5px] font-medium text-[#4A4A4A]">{healthReport.details.networkMessage}</p>
+                      </div>
+                    </div>
+
+                    {/* 3. Database Schema */}
+                    <div className="flex items-start gap-2.5">
+                      {healthReport.schemaMigrated ? (
+                        <CheckCircle2 className="h-4 w-4 shrink-0 text-[#2D6A4F] mt-0.5" />
+                      ) : (
+                        <AlertCircle className="h-4 w-4 shrink-0 text-[#F4A261] mt-0.5" />
+                      )}
+                      <div>
+                        <p className="text-[12.5px] font-extrabold text-[#1B4332]">3. Database Schema Status</p>
+                        <p className="text-[11.5px] font-medium text-[#4A4A4A]">{healthReport.details.databaseMessage}</p>
+                      </div>
+                    </div>
+
+                    {/* 4. Auth Service */}
+                    <div className="flex items-start gap-2.5">
+                      {healthReport.authOperational ? (
+                        <CheckCircle2 className="h-4 w-4 shrink-0 text-[#2D6A4F] mt-0.5" />
+                      ) : (
+                        <AlertCircle className="h-4 w-4 shrink-0 text-[#E76F51] mt-0.5" />
+                      )}
+                      <div>
+                        <p className="text-[12.5px] font-extrabold text-[#1B4332]">4. Auth Service Status</p>
+                        <p className="text-[11.5px] font-medium text-[#4A4A4A]">{healthReport.details.authMessage}</p>
+                      </div>
+                    </div>
+
+                    {/* 5. Integration Status */}
+                    <div className="flex items-start gap-2.5">
+                      <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-[#1B4332] text-[9px] font-extrabold text-white mt-0.5">
+                        i
+                      </span>
+                      <div>
+                        <p className="text-[12.5px] font-extrabold text-[#1B4332]">5. Application Data Layer</p>
+                        <p className="text-[11.5px] font-medium text-[#4A4A4A]">{healthReport.details.integrationMessage}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl bg-[#EFFAF1] p-3 text-[11.5px] font-medium text-[#1B4332] ring-1 ring-[#2D6A4F]/20">
+                    <p className="font-bold">Next Migration Step:</p>
+                    Execute <code className="font-mono bg-white/60 px-1 py-0.5 rounded text-[11px]">supabase/migrations/20261024000000_initial_schema.sql</code> in the Supabase Dashboard SQL Editor to initialize all 10 tables, triggers, and RLS policies.
+                  </div>
+                </>
+              ) : null}
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={runHealthCheck}
+                  disabled={loadingHealth}
+                  className="flex-1 flex items-center justify-center gap-1.5 rounded-2xl bg-[#1B4332] py-2.5 text-[12.5px] font-extrabold text-white transition hover:bg-[#2D6A4F]"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${loadingHealth ? "animate-spin" : ""}`} />
+                  {loadingHealth ? "Testing..." : "Re-test Connection"}
+                </button>
+                <button
+                  onClick={() => setShowHealthModal(false)}
+                  className="rounded-2xl px-5 py-2.5 text-[12.5px] font-extrabold text-[#4A4A4A] ring-1 ring-[#1B4332]/15 hover:bg-[#FAF9F6]"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

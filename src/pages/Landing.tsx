@@ -8,12 +8,56 @@ import { SectionHead, ServiceIcon, Stars, TrustRing, Footer } from "../component
 import type { Page } from "../components/shared";
 
 export default function Landing({
-  go, lang, location, setLocation,
+  go, lang, location, setLocation, selectedService, setSelectedService, searchQuery, setSearchQuery,
 }: {
-  go: (p: Page, wid?: string) => void; lang: "en" | "hi"; location: string; setLocation: (s: string) => void;
+  go: (p: Page, opts?: any) => void;
+  lang: "en" | "hi";
+  location: string;
+  setLocation: (s: string) => void;
+  selectedService: string;
+  setSelectedService: (s: string) => void;
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
 }) {
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(searchQuery || "");
   const [listening, setListening] = useState(false);
+
+  const handleSearch = (customQuery?: string) => {
+    const text = (customQuery !== undefined ? customQuery : q).trim();
+    setSearchQuery(text);
+
+    const lower = text.toLowerCase();
+    const matched = services.find((s) =>
+      lower.includes(s.id) ||
+      lower.includes(s.en.toLowerCase()) ||
+      lower.includes(s.hi) ||
+      (s.id === "plumbing" && (lower.includes("tap") || lower.includes("leak") || lower.includes("pipe") || lower.includes("नल") || lower.includes("plumb"))) ||
+      (s.id === "electrical" && (lower.includes("fan") || lower.includes("light") || lower.includes("switch") || lower.includes("wire") || lower.includes("बिजली") || lower.includes("electr"))) ||
+      (s.id === "cleaning" && (lower.includes("clean") || lower.includes("deep") || lower.includes("safai") || lower.includes("सफाई"))) ||
+      (s.id === "cooking" && (lower.includes("cook") || lower.includes("food") || lower.includes("meal") || lower.includes("tiffin") || lower.includes("खाना"))) ||
+      (s.id === "painting" && (lower.includes("paint") || lower.includes("wall") || lower.includes("color") || lower.includes("रंग"))) ||
+      (s.id === "appliance" && (lower.includes("ac") || lower.includes("fridge") || lower.includes("washer") || lower.includes("repair"))) ||
+      (s.id === "carpentry" && (lower.includes("wood") || lower.includes("door") || lower.includes("lock") || lower.includes("furniture") || lower.includes("बढ़ई") || lower.includes("carpent"))) ||
+      (s.id === "gardening" && (lower.includes("garden") || lower.includes("plant") || lower.includes("pot") || lower.includes("पौधे")))
+    );
+
+    const serviceId = matched ? matched.id : selectedService !== "All" ? selectedService : "All";
+    if (matched) setSelectedService(serviceId);
+    go("workers", { service: serviceId, searchQuery: text, location });
+  };
+
+  const handleVoiceSearch = () => {
+    if (listening) return;
+    setListening(true);
+    const spokenText = lang === "hi" ? "मुझे प्लंबर चाहिए (नल ठीक)" : "Need a plumber to fix leaking tap";
+    setTimeout(() => {
+      setQ(spokenText);
+    }, 700);
+    setTimeout(() => {
+      setListening(false);
+      handleSearch(spokenText);
+    }, 1800);
+  };
 
   return (
     <div className="page-enter">
@@ -62,16 +106,26 @@ export default function Landing({
                 </label>
                 <label className="flex flex-[1.4] items-center gap-2 rounded-2xl bg-[#FAF9F6] px-4 py-3 ring-1 ring-[#1B4332]/10 focus-within:ring-[#2D6A4F]">
                   <Search className="h-5 w-5 shrink-0 text-[#1B4332]" />
-                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={lang === "hi" ? "क्या काम करवाना है? (जैसे: नल ठीक)" : "What do you need? (e.g. leaking tap)"}
-                    className="w-full bg-transparent text-[14px] font-semibold text-[#1A1A1A] outline-none placeholder:text-[#8a8a8a]" />
+                  <input
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                    placeholder={lang === "hi" ? "क्या काम करवाना है? (जैसे: नल ठीक, कुक)" : "What do you need? (e.g. leaking tap, cook)"}
+                    className="w-full bg-transparent text-[14px] font-semibold text-[#1A1A1A] outline-none placeholder:text-[#8a8a8a]"
+                  />
+                  {q && (
+                    <button onClick={() => { setQ(""); setSearchQuery(""); }} className="text-[#8a8a8a] hover:text-[#1A1A1A] text-xs font-bold px-1">✕</button>
+                  )}
                 </label>
               </div>
               <div className="mt-2 flex gap-2">
-                <button onClick={() => go("workers")}
+                <button
+                  onClick={() => handleSearch()}
                   className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[#1B4332] px-6 py-4 text-[15px] font-extrabold text-white transition hover:bg-[#2D6A4F] active:scale-[0.98]">
                   {lang === "hi" ? "कारीगर खोजें" : "Find a Worker"} <ArrowRight className="h-5 w-5" />
                 </button>
-                <button onClick={() => { setListening(!listening); setTimeout(() => setListening(false), 2200); }}
+                <button
+                  onClick={handleVoiceSearch}
                   aria-label="Voice search"
                   className={`grid w-[60px] place-items-center rounded-2xl text-white transition active:scale-90 ${listening ? "bg-[#E76F51] animate-pulse-ring" : "bg-[#E76F51]/90 hover:bg-[#E76F51]"}`}>
                   <Mic className="h-5 w-5" />
@@ -79,7 +133,7 @@ export default function Landing({
               </div>
               {listening && (
                 <p className="animate-fade-in px-2 pb-1 pt-2 text-center text-[12.5px] font-bold text-[#E76F51]">
-                  🎙️ {lang === "hi" ? "सुन रहे हैं… बोलिए: “मुझे प्लंबर चाहिए”" : "Listening… say: “I need a plumber near me”"}
+                  🎙️ {lang === "hi" ? "सुन रहे हैं… “मुझे प्लंबर चाहिए”" : "Listening… “Need a plumber to fix leaking tap”"}
                 </p>
               )}
             </div>
@@ -126,15 +180,29 @@ export default function Landing({
       <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <SectionHead eyebrow={lang === "hi" ? "सेवाएँ" : "Services"} title={lang === "hi" ? "आपको क्या काम करवाना है?" : "What do you need help with?"} sub={lang === "hi" ? "8+ श्रेणियाँ • शुरुआती दाम के साथ • हिंदी + English" : "8+ categories with honest starting prices"} />
-          <button onClick={() => go("workers")} className="flex items-center gap-1 rounded-full bg-white px-4 py-2.5 text-[13px] font-bold text-[#1B4332] ring-1 ring-[#1B4332]/15 hover:ring-[#1B4332]/40">
+          <button
+            onClick={() => {
+              setSelectedService("All");
+              setSearchQuery("");
+              go("workers", { service: "All", location, searchQuery: "" });
+            }}
+            className="flex items-center gap-1 rounded-full bg-white px-4 py-2.5 text-[13px] font-bold text-[#1B4332] ring-1 ring-[#1B4332]/15 hover:ring-[#1B4332]/40"
+          >
             {lang === "hi" ? "सभी देखें" : "View all"} <ChevronRight className="h-4 w-4" />
           </button>
         </div>
         <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
           {services.map((s, i) => (
-            <button key={s.id} onClick={() => go("workers")}
+            <button
+              key={s.id}
+              onClick={() => {
+                setSelectedService(s.id);
+                setSearchQuery("");
+                go("workers", { service: s.id, location, searchQuery: "" });
+              }}
               className="group rounded-[18px] bg-white p-4 text-left ring-1 ring-[#1B4332]/10 card-shadow transition hover:-translate-y-1 hover:ring-[#2D6A4F]/40 sm:p-5"
-              style={{ animationDelay: `${i * 40}ms` }}>
+              style={{ animationDelay: `${i * 40}ms` }}
+            >
               <div className={`grid h-12 w-12 place-items-center rounded-2xl transition group-hover:scale-110 ${i % 3 === 1 ? "bg-[#E76F51]/12 text-[#E76F51]" : "bg-[#1B4332]/8 text-[#1B4332]"}`}>
                 <ServiceIcon icon={s.icon} />
               </div>
@@ -303,12 +371,12 @@ function WorkerMini({ id, go }: { id: string; go: (p: Page, wid?: string) => voi
       <div className="relative">
         <img src={w.photo} alt={w.name} className="h-36 w-full object-cover" loading="lazy" />
         <span className="absolute left-2.5 top-2.5 flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 text-[10.5px] font-extrabold text-[#1B4332]"><span className="h-1.5 w-1.5 rounded-full bg-[#2D6A4F]" /> NOW</span>
-        <span className="absolute bottom-2.5 right-2.5 rounded-full bg-[#1B4332] px-2.5 py-1 text-[10.5px] font-extrabold text-white">{w.trustDNA} ◆</span>
+        <span className="absolute bottom-2.5 right-2.5 rounded-full bg-[#1B4332] px-2.5 py-1 text-[10.5px] font-extrabold text-white">{w.trustDNA != null ? `${w.trustDNA} ◆` : "Not enough data"}</span>
       </div>
       <div className="p-3.5">
         <p className="flex items-center gap-1 text-[14px] font-extrabold">{w.name} <BadgeCheck className="h-4 w-4 fill-[#52B788] text-white" /></p>
         <p className="text-[12px] font-semibold text-[#4A4A4A]">{w.service} • {w.distance}</p>
-        <p className="mt-1.5 flex items-center justify-between"><span className="text-[15px] font-extrabold text-[#1B4332]">₹{w.price}</span><span className="flex items-center gap-1 text-[12px] font-bold"><Star className="h-3.5 w-3.5 fill-[#F4A261] text-[#F4A261]" />{w.rating} ({w.jobs})</span></p>
+        <p className="mt-1.5 flex items-center justify-between"><span className="text-[15px] font-extrabold text-[#1B4332]">₹{w.price}</span><span className="flex items-center gap-1 text-[12px] font-bold"><Star className="h-3.5 w-3.5 fill-[#F4A261] text-[#F4A261]" />{w.rating ?? "New"} ({w.jobs})</span></p>
       </div>
     </button>
   );

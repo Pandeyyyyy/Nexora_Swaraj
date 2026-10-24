@@ -12,33 +12,96 @@ import type { Page } from "../components/shared";
 /* ================= CUSTOMER HOME ================= */
 export function CustomerHome({
   go, lang, location, selectedService, setSelectedService, selectedWorker, setSelectedWorker,
+  searchQuery, setSearchQuery, scheduleMode, setScheduleMode, scheduleDate, setScheduleDate,
 }: {
-  go: (p: Page, wid?: string) => void; lang: "en" | "hi"; location: string;
+  go: (p: Page, opts?: any) => void; lang: "en" | "hi"; location: string;
   selectedService: string; setSelectedService: (s: string) => void;
   selectedWorker: string; setSelectedWorker: (s: string) => void;
+  searchQuery?: string; setSearchQuery?: (q: string) => void;
+  scheduleMode?: "asap" | "later"; setScheduleMode?: (m: "asap" | "later") => void;
+  scheduleDate?: string; setScheduleDate?: (d: string) => void;
 }) {
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(searchQuery || "");
   const [listening, setListening] = useState(false);
   const [voiceText, setVoiceText] = useState("");
   const [filter, setFilter] = useState("All");
   const [loading] = useState(false);
   const [liked, setLiked] = useState<string[]>([]);
+  const [showSchedulePicker, setShowSchedulePicker] = useState(false);
 
   const nearby = useMemo(() => {
     let list = [...workers];
     if (selectedService !== "All") list = list.filter((w) => w.serviceId === selectedService);
-    if (filter === "Available now") list = list.filter((w) => w.availableNow);
-    if (filter === "Top rated") list = list.filter((w) => w.rating >= 4.8);
-    if (filter === "Nearest") list = list.sort((a, b) => a.distanceKm - b.distanceKm);
-    if (filter === "Budget") list = list.filter((w) => w.price < 350);
-    if (q) list = list.filter((w) => (w.name + w.service + w.skills.join(" ")).toLowerCase().includes(q.toLowerCase()));
+    if (filter === "ASAP" || filter === "Available now") {
+      list = list.filter((w) => w.availableNow);
+      list.sort((a, b) => a.distanceKm - b.distanceKm);
+    } else if (filter === "Schedule") {
+      // Schedule mode: show top reliable workers first
+      list = list.sort((a, b) => (b.trustDNA ?? 0) - (a.trustDNA ?? 0));
+    } else if (filter === "Top rated") {
+      list = list.filter((w) => (w.rating ?? 0) >= 4.8);
+    } else if (filter === "Nearest") {
+      list = list.sort((a, b) => a.distanceKm - b.distanceKm);
+    } else if (filter === "Budget") {
+      list = list.filter((w) => w.price < 350);
+    }
+    const query = q.trim().toLowerCase();
+    if (query) {
+      list = list.filter((w) =>
+        (w.name + " " + w.hindiName + " " + w.service + " " + w.skills.join(" ") + " " + w.area)
+          .toLowerCase()
+          .includes(query)
+      );
+    }
     return list;
   }, [selectedService, filter, q]);
 
+  const handleFilterClick = (fEn: string) => {
+    if (fEn === "Schedule") {
+      setShowSchedulePicker(true);
+      setFilter("Schedule");
+      if (setScheduleMode) setScheduleMode("later");
+    } else if (fEn === "ASAP") {
+      setShowSchedulePicker(false);
+      setFilter(filter === "ASAP" ? "All" : "ASAP");
+      if (setScheduleMode) setScheduleMode("asap");
+    } else {
+      setShowSchedulePicker(false);
+      setFilter(filter === fEn ? "All" : fEn);
+    }
+  };
+
   const startVoice = () => {
     setListening(true); setVoiceText("");
-    setTimeout(() => setVoiceText(lang === "hi" ? "“मुझे नल ठीक करने वाला चाहिए…”" : "“I need someone to fix a leaking tap…”"), 700);
-    setTimeout(() => { setListening(false); setQ("plumb"); setSelectedService("plumbing"); }, 2400);
+    const spoken = lang === "hi" ? "“मुझे नल ठीक करने वाला चाहिए…”" : "“I need someone to fix a leaking tap…”";
+    setTimeout(() => setVoiceText(spoken), 700);
+    setTimeout(() => {
+      setListening(false);
+      setQ("plumbing");
+      if (setSearchQuery) setSearchQuery("plumbing");
+      setSelectedService("plumbing");
+    }, 2200);
+  };
+
+  const handleSearchSubmit = () => {
+    if (setSearchQuery) setSearchQuery(q);
+    const lower = q.toLowerCase().trim();
+    const matched = services.find((s) =>
+      lower.includes(s.id) ||
+      lower.includes(s.en.toLowerCase()) ||
+      lower.includes(s.hi) ||
+      (s.id === "plumbing" && (lower.includes("tap") || lower.includes("leak") || lower.includes("pipe") || lower.includes("नल"))) ||
+      (s.id === "electrical" && (lower.includes("fan") || lower.includes("switch") || lower.includes("wire") || lower.includes("बिजली"))) ||
+      (s.id === "cleaning" && (lower.includes("clean") || lower.includes("safai") || lower.includes("सफाई"))) ||
+      (s.id === "cooking" && (lower.includes("cook") || lower.includes("food") || lower.includes("खाना"))) ||
+      (s.id === "painting" && (lower.includes("paint") || lower.includes("wall") || lower.includes("रंग"))) ||
+      (s.id === "appliance" && (lower.includes("ac") || lower.includes("fridge") || lower.includes("washer"))) ||
+      (s.id === "carpentry" && (lower.includes("wood") || lower.includes("door") || lower.includes("lock") || lower.includes("बढ़ई"))) ||
+      (s.id === "gardening" && (lower.includes("garden") || lower.includes("plant") || lower.includes("पौधे")))
+    );
+    if (matched) {
+      setSelectedService(matched.id);
+    }
   };
 
   return (
@@ -51,7 +114,7 @@ export function CustomerHome({
             {lang === "hi" ? "नमस्ते, प्रिया 🙏" : "Namaste, Priya 🙏"}
           </h1>
         </div>
-        <button onClick={() => go("tracking")} className="relative grid h-11 w-11 place-items-center rounded-full bg-white ring-1 ring-[#1B4332]/10">
+        <button onClick={() => go("tracking")} className="relative grid h-11 w-11 place-items-center rounded-full bg-white ring-1 ring-[#1B4332]/10" aria-label="Tracking">
           <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-[#E76F51]" />
           <Clock className="h-5 w-5 text-[#1B4332]" />
         </button>
@@ -60,9 +123,27 @@ export function CustomerHome({
       <div className="mt-4 flex gap-2">
         <label className="flex flex-1 items-center gap-2.5 rounded-[18px] bg-white px-4 py-1 ring-1 ring-[#1B4332]/12 card-shadow focus-within:ring-[#2D6A4F]">
           <Search className="h-5 w-5 shrink-0 text-[#1B4332]" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={lang === "hi" ? "खोजें: प्लंबर, सफ़ाई, कुक…" : "Search: plumber, cleaning, cook…"}
-            className="h-12 w-full bg-transparent text-[14.5px] font-semibold outline-none placeholder:text-[#8a8a8a]" />
-          {q && <button onClick={() => setQ("")} aria-label="Clear"><X className="h-4 w-4 text-[#8a8a8a]" /></button>}
+          <input
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
+              if (setSearchQuery) setSearchQuery(e.target.value);
+            }}
+            onKeyDown={(e) => e.key === "Enter" && handleSearchSubmit()}
+            placeholder={lang === "hi" ? "खोजें: प्लंबर, सफ़ाई, कुक…" : "Search: plumber, cleaning, cook…"}
+            className="h-12 w-full bg-transparent text-[14.5px] font-semibold outline-none placeholder:text-[#8a8a8a]"
+          />
+          {q && (
+            <button
+              onClick={() => {
+                setQ("");
+                if (setSearchQuery) setSearchQuery("");
+              }}
+              aria-label="Clear"
+            >
+              <X className="h-4 w-4 text-[#8a8a8a]" />
+            </button>
+          )}
         </label>
         <VoiceButton onClick={startVoice} listening={listening} />
       </div>
@@ -76,24 +157,72 @@ export function CustomerHome({
       {/* quick filters */}
       <div className="no-scrollbar -mx-4 mt-4 flex gap-2 overflow-x-auto px-4 pb-1">
         {[
-          { en: "ASAP", hi: "तुरंत", icon: Zap },
+          { en: "ASAP", hi: "तुरंत (ASAP)", icon: Zap },
           { en: "Schedule", hi: "शेड्यूल", icon: Clock },
           { en: "Available now", hi: "अभी उपलब्ध", icon: null },
           { en: "Top rated", hi: "टॉप रेटेड", icon: null },
           { en: "Nearest", hi: "नज़दीकी", icon: null },
-          { en: "Budget", hi: "बजट", icon: null },
+          { en: "Budget", hi: "बजट (< ₹350)", icon: null },
         ].map((f) => (
-          <button key={f.en} onClick={() => setFilter(filter === f.en ? "All" : f.en)}
+          <button key={f.en} onClick={() => handleFilterClick(f.en)}
             className={`flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2.5 text-[12.5px] font-extrabold ring-1 transition active:scale-95 ${filter === f.en ? "bg-[#1B4332] text-white ring-[#1B4332]" : "bg-white text-[#1A1A1A] ring-[#1B4332]/12"}`}>
             {f.icon && <f.icon className="h-3.5 w-3.5" />}{lang === "hi" ? f.hi : f.en}
           </button>
         ))}
       </div>
 
+      {/* ASAP alert strip when active */}
+      {filter === "ASAP" && (
+        <div className="animate-fade-in mt-3 flex items-center justify-between rounded-2xl bg-[#EFFAF1] px-4 py-3 text-[12.5px] font-bold text-[#1B4332] ring-1 ring-[#2D6A4F]/20">
+          <span className="flex items-center gap-2">
+            <Zap className="h-4 w-4 text-[#E76F51]" />
+            Showing {nearby.length} workers available for immediate dispatch (ETA under 25 mins)
+          </span>
+          <button onClick={() => setFilter("All")} className="text-xs underline font-semibold">Show all</button>
+        </div>
+      )}
+
+      {/* Schedule selector drawer when active */}
+      {showSchedulePicker && (
+        <div className="animate-slide-up mt-3 rounded-[20px] bg-white p-4 ring-1 ring-[#1B4332]/15 card-shadow">
+          <div className="flex items-center justify-between">
+            <p className="flex items-center gap-2 text-[13.5px] font-extrabold text-[#1B4332]">
+              <Clock className="h-4 w-4 text-[#E76F51]" /> Pick your preferred appointment slot
+            </p>
+            <button onClick={() => setShowSchedulePicker(false)} className="text-xs font-bold text-[#8a8a8a] hover:text-[#1A1A1A]">✕ Close</button>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {["Today, 4:00 PM", "Tomorrow, 10:00 AM", "Tomorrow, 2:00 PM", "Tomorrow, 6:00 PM", "Day after tomorrow, 11:00 AM"].map((slot) => (
+              <button
+                key={slot}
+                onClick={() => {
+                  if (setScheduleDate) setScheduleDate(slot);
+                  if (setScheduleMode) setScheduleMode("later");
+                }}
+                className={`rounded-xl px-3.5 py-2 text-[12px] font-extrabold ring-1 transition ${(scheduleDate || "Tomorrow, 10:00 AM") === slot ? "bg-[#1B4332] text-white ring-[#1B4332]" : "bg-[#FAF9F6] text-[#4A4A4A] ring-[#1B4332]/10 hover:ring-[#1B4332]/30"}`}
+              >
+                {slot}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2.5 text-[11.5px] font-semibold text-[#4A4A4A]">
+            Selected: <span className="font-extrabold text-[#1B4332]">{scheduleDate || "Tomorrow, 10:00 AM"}</span> • This appointment time is locked and honored by your chosen worker.
+          </p>
+        </div>
+      )}
+
       {/* categories */}
       <div className="mt-6 flex items-center justify-between">
         <h2 className="text-[16px] font-extrabold">{lang === "hi" ? "सेवा चुनें" : "Choose a service"}</h2>
-        <button onClick={() => go("workers")} className="text-[12.5px] font-bold text-[#2D6A4F]">See all →</button>
+        <button
+          onClick={() => {
+            setSelectedService("All");
+            go("workers", { service: "All", location, searchQuery: q });
+          }}
+          className="text-[12.5px] font-bold text-[#2D6A4F] hover:underline"
+        >
+          See all →
+        </button>
       </div>
       <div className="no-scrollbar -mx-4 mt-3 flex gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:grid sm:grid-cols-4 sm:px-0 lg:grid-cols-8">
         <button onClick={() => setSelectedService("All")}
@@ -127,7 +256,7 @@ export function CustomerHome({
               className="flex shrink-0 items-center gap-2.5 rounded-2xl bg-white/10 p-2 pr-4 ring-1 ring-white/15 backdrop-blur transition hover:bg-white/20">
               <img src={w.photo} alt={w.name} className="h-11 w-11 rounded-xl object-cover" />
               <span className="text-left"><span className="block text-[12.5px] font-extrabold">{w.name.split(" ")[0]} • {w.service}</span>
-                <span className="block text-[11px] font-semibold text-white/70">₹{w.price} • {w.eta} • ◆{w.trustDNA}</span></span>
+                <span className="block text-[11px] font-semibold text-white/70">₹{w.price} • {w.eta} • ◆{w.trustDNA ?? "N/A"}</span></span>
             </button>
           ))}
         </div>
@@ -135,8 +264,16 @@ export function CustomerHome({
 
       {/* nearby */}
       <div className="mt-6 flex items-center justify-between">
-        <h2 className="text-[16px] font-extrabold">{lang === "hi" ? "नज़दीकी कारीगर" : "Nearby workers"} <span className="ml-1 rounded-full bg-[#1B4332]/8 px-2.5 py-1 text-[11px]">{nearby.length}</span></h2>
-        <button onClick={() => go("workers")} className="flex items-center gap-1 text-[12.5px] font-bold text-[#2D6A4F]"><MapIcon className="h-3.5 w-3.5" /> Map view</button>
+        <h2 className="text-[16px] font-extrabold">
+          {lang === "hi" ? "नज़दीकी कारीगर" : "Nearby workers"}{" "}
+          <span className="ml-1 rounded-full bg-[#1B4332]/8 px-2.5 py-1 text-[11px]">{nearby.length}</span>
+        </h2>
+        <button
+          onClick={() => go("workers", { service: selectedService, location, searchQuery: q })}
+          className="flex items-center gap-1 text-[12.5px] font-bold text-[#2D6A4F] hover:underline"
+        >
+          <MapIcon className="h-3.5 w-3.5" /> Map & all ({nearby.length})
+        </button>
       </div>
       {loading ? (
         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{[1, 2, 3].map((i) => <SkeletonCard key={i} />)}</div>
@@ -173,7 +310,7 @@ export function WorkerRowCard({ w, go, liked, onLike, onSelect }: { w: Worker; g
           </button>
         </div>
         <div className="mt-1.5 flex items-center justify-between">
-          <span className="flex items-center gap-1 text-[12px] font-bold"><Star className="h-3.5 w-3.5 fill-[#F4A261] text-[#F4A261]" />{w.rating} <span className="font-semibold text-[#8a8a8a]">({w.jobs})</span> <span className="ml-1 rounded-full bg-[#EFFAF1] px-2 py-0.5 text-[10.5px] font-extrabold text-[#1B4332]">◆ {w.trustDNA}</span></span>
+          <span className="flex items-center gap-1 text-[12px] font-bold"><Star className="h-3.5 w-3.5 fill-[#F4A261] text-[#F4A261]" />{w.rating ?? "New"} <span className="font-semibold text-[#8a8a8a]">({w.jobs})</span> <span className="ml-1 rounded-full bg-[#EFFAF1] px-2 py-0.5 text-[10.5px] font-extrabold text-[#1B4332]">◆ {w.trustDNA != null ? w.trustDNA : "Not enough data"}</span></span>
           <span className="text-[15px] font-extrabold text-[#1B4332]">₹{w.price}<span className="text-[10.5px] font-bold text-[#8a8a8a]">+</span></span>
         </div>
         <button onClick={() => go("booking", w.id)} className="mt-2 w-full rounded-xl bg-[#1B4332] py-2 text-[12.5px] font-extrabold text-white transition hover:bg-[#2D6A4F] active:scale-[0.98]">Negotiate & Book →</button>
@@ -185,8 +322,10 @@ export function WorkerRowCard({ w, go, liked, onLike, onSelect }: { w: Worker; g
 /* ================= WORKER LISTING ================= */
 export function WorkerListing({
   go, lang, selectedService, setSelectedService, setSelectedWorker,
+  searchQuery, setSearchQuery, location,
 }: {
-  go: (p: Page, wid?: string) => void; lang: "en" | "hi"; selectedService: string; setSelectedService: (s: string) => void; setSelectedWorker: (s: string) => void;
+  go: (p: Page, opts?: any) => void; lang: "en" | "hi"; selectedService: string; setSelectedService: (s: string) => void; setSelectedWorker: (s: string) => void;
+  searchQuery?: string; setSearchQuery?: (q: string) => void; location?: string;
 }) {
   const [view, setView] = useState<"list" | "map">("list");
   const [sort, setSort] = useState("Recommended");
@@ -198,20 +337,36 @@ export function WorkerListing({
   const list = useMemo(() => {
     let l = [...workers];
     if (selectedService !== "All") l = l.filter((w) => w.serviceId === selectedService);
-    l = l.filter((w) => w.price <= maxPrice && w.trustDNA >= minTrust);
+    if (searchQuery) {
+      const sq = searchQuery.toLowerCase().trim();
+      l = l.filter((w) =>
+        (w.name + " " + w.hindiName + " " + w.service + " " + w.skills.join(" ") + " " + w.area + " " + w.about)
+          .toLowerCase()
+          .includes(sq)
+      );
+    }
+    l = l.filter((w) => w.price <= maxPrice && (w.trustDNA ?? 0) >= minTrust);
     if (onlyNow) l = l.filter((w) => w.availableNow);
     if (sort === "Price: low to high") l.sort((a, b) => a.price - b.price);
-    if (sort === "Highest rated") l.sort((a, b) => b.rating - a.rating);
+    if (sort === "Highest rated") l.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
     if (sort === "Nearest") l.sort((a, b) => a.distanceKm - b.distanceKm);
-    if (sort === "TrustDNA") l.sort((a, b) => b.trustDNA - a.trustDNA);
+    if (sort === "TrustDNA") l.sort((a, b) => (b.trustDNA ?? 0) - (a.trustDNA ?? 0));
     return l;
-  }, [selectedService, sort, maxPrice, onlyNow, minTrust]);
+  }, [selectedService, searchQuery, sort, maxPrice, onlyNow, minTrust]);
+
+  const activeServiceObj = services.find((s) => s.id === selectedService);
 
   return (
     <div className="page-enter mx-auto max-w-6xl px-4 pb-28 pt-5 sm:px-6 md:pb-16">
       <button onClick={() => go("customer-home")} className="flex items-center gap-1.5 text-[13px] font-bold text-[#4A4A4A] hover:text-[#1B4332]"><ChevronLeft className="h-4 w-4" /> Back</button>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-[24px] font-black tracking-tight sm:text-[30px]">{selectedService === "All" ? (lang === "hi" ? "सभी कारीगर" : "All workers") : services.find((s) => s.id === selectedService)?.[lang]} <span className="text-[#8a8a8a] text-[16px] font-bold">({list.length})</span></h1>
+        <div>
+          <h1 className="font-display text-[24px] font-black tracking-tight sm:text-[30px]">
+            {selectedService === "All" ? (lang === "hi" ? "सभी कारीगर" : "All verified workers") : activeServiceObj?.[lang] || selectedService}{" "}
+            <span className="text-[#8a8a8a] text-[16px] font-bold">({list.length})</span>
+          </h1>
+          {location && <p className="text-xs font-bold text-[#4A4A4A] mt-0.5"><MapPin className="inline h-3 w-3 text-[#E76F51] mr-1" />{location}</p>}
+        </div>
         <div className="flex items-center gap-2">
           <div className="flex rounded-full bg-white p-1 ring-1 ring-[#1B4332]/12">
             <button onClick={() => setView("list")} className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-[12.5px] font-extrabold transition ${view === "list" ? "bg-[#1B4332] text-white" : "text-[#4A4A4A]"}`}><List className="h-4 w-4" /> List</button>
@@ -223,11 +378,29 @@ export function WorkerListing({
         </div>
       </div>
 
+      {/* live search input bar */}
+      <div className="mt-3 flex items-center gap-2.5 rounded-[18px] bg-white px-4 py-1.5 ring-1 ring-[#1B4332]/12 card-shadow focus-within:ring-[#2D6A4F]">
+        <Search className="h-4 w-4 shrink-0 text-[#1B4332]" />
+        <input
+          value={searchQuery || ""}
+          onChange={(e) => setSearchQuery && setSearchQuery(e.target.value)}
+          placeholder={lang === "hi" ? "कारीगर का नाम, कौशल (जैसे leak, fan, paint) या इलाका खोजें…" : "Search worker by name, skill (e.g. leak, wiring, AC), or area..."}
+          className="h-10 w-full bg-transparent text-[13.5px] font-semibold outline-none placeholder:text-[#8a8a8a]"
+        />
+        {searchQuery && (
+          <button onClick={() => setSearchQuery && setSearchQuery("")} aria-label="Clear search" className="rounded-full p-1 text-[#8a8a8a] hover:text-[#1A1A1A]">
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
       {/* service pills */}
-      <div className="no-scrollbar -mx-4 mt-4 flex gap-2 overflow-x-auto px-4 pb-1">
-        {[{ id: "All", en: "All" }, ...services].map((s) => (
+      <div className="no-scrollbar -mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1">
+        {[{ id: "All", en: "All services", hi: "सभी" }, ...services].map((s) => (
           <button key={s.id} onClick={() => setSelectedService(s.id)}
-            className={`shrink-0 rounded-full px-4 py-2 text-[12.5px] font-extrabold ring-1 transition active:scale-95 ${selectedService === s.id ? "bg-[#1B4332] text-white ring-[#1B4332]" : "bg-white ring-[#1B4332]/12"}`}>{s.en}</button>
+            className={`shrink-0 rounded-full px-4 py-2 text-[12.5px] font-extrabold ring-1 transition active:scale-95 ${selectedService === s.id ? "bg-[#1B4332] text-white ring-[#1B4332]" : "bg-white ring-[#1B4332]/12"}`}>
+            {lang === "hi" ? (s as any).hi : (s as any).en}
+          </button>
         ))}
       </div>
 
@@ -272,7 +445,7 @@ export function WorkerListing({
             </svg>
             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
               <div className="grid h-12 w-12 place-items-center rounded-full bg-[#1B4332] text-white ring-4 ring-white card-shadow-lg"><Navigation className="h-5 w-5" /></div>
-              <p className="mt-1 whitespace-nowrap rounded-full bg-[#122b21] px-3 py-1 text-center text-[10.5px] font-extrabold text-white">You • Laxmi Nagar</p>
+              <p className="mt-1 whitespace-nowrap rounded-full bg-[#122b21] px-3 py-1 text-center text-[10.5px] font-extrabold text-white">You • {location || "Laxmi Nagar"}</p>
             </div>
             {list.slice(0, 5).map((w, i) => {
               const pos = [{ l: "18%", t: "22%" }, { l: "68%", t: "18%" }, { l: "74%", t: "62%" }, { l: "24%", t: "66%" }, { l: "48%", t: "30%" }][i];
@@ -286,15 +459,25 @@ export function WorkerListing({
                 </button>
               );
             })}
-            <div className="absolute bottom-3 left-3 rounded-2xl bg-white/95 px-3.5 py-2.5 text-[11.5px] font-bold text-[#1A1A1A] backdrop-blur card-shadow">
-              🗺️ {list.length} workers within 3 km • Tap a pin to view profile
-            </div>
+            {list.length === 0 ? (
+              <div className="absolute inset-0 grid place-items-center bg-[#EDE8DA]/80 backdrop-blur-sm p-4 text-center">
+                <div className="rounded-2xl bg-white p-5 shadow-lg max-w-sm">
+                  <p className="text-[15px] font-extrabold text-[#1A1A1A]">No workers found on map</p>
+                  <p className="mt-1 text-xs font-medium text-[#4A4A4A]">No verified workers match your selected filters in this area.</p>
+                  <button onClick={() => { setMaxPrice(900); setMinTrust(0); setOnlyNow(false); setSelectedService("All"); if (setSearchQuery) setSearchQuery(""); }} className="mt-3 rounded-full bg-[#1B4332] px-4 py-2 text-xs font-bold text-white">Reset filters</button>
+                </div>
+              </div>
+            ) : (
+              <div className="absolute bottom-3 left-3 rounded-2xl bg-white/95 px-3.5 py-2.5 text-[11.5px] font-bold text-[#1A1A1A] backdrop-blur card-shadow">
+                🗺️ {list.length} workers within 3 km • Tap a pin to view profile
+              </div>
+            )}
           </div>
           <div className="no-scrollbar flex gap-3 overflow-x-auto bg-white p-3">
             {list.map((w) => (
               <button key={w.id} onClick={() => { setSelectedWorker(w.id); go("worker-profile", w.id); }} className="flex w-[240px] shrink-0 items-center gap-2.5 rounded-2xl bg-[#FAF9F6] p-2.5 text-left ring-1 ring-[#1B4332]/10 hover:ring-[#2D6A4F]">
                 <img src={w.photo} alt={w.name} className="h-12 w-12 rounded-xl object-cover" />
-                <span><span className="block text-[13px] font-extrabold">{w.name}</span><span className="block text-[11.5px] font-semibold text-[#4A4A4A]">◆{w.trustDNA} • {w.distance} • ₹{w.price}</span></span>
+                <span><span className="block text-[13px] font-extrabold">{w.name}</span><span className="block text-[11.5px] font-semibold text-[#4A4A4A]">◆{w.trustDNA != null ? w.trustDNA : "Not enough data"} • {w.distance} • ₹{w.price}</span></span>
               </button>
             ))}
           </div>
@@ -303,7 +486,50 @@ export function WorkerListing({
         <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_340px]">
           <div className="grid content-start gap-4 sm:grid-cols-2">
             {list.length === 0 ? (
-              <div className="sm:col-span-2"><EmptyState title="No matches for these filters" sub="Loosen the price or TrustDNA filter to see more verified workers nearby." action={<button onClick={() => { setMaxPrice(900); setMinTrust(0); setOnlyNow(false); }} className="rounded-full bg-[#1B4332] px-5 py-2.5 text-[13px] font-bold text-white">Reset filters</button>} /></div>
+              <div className="sm:col-span-2">
+                <EmptyState
+                  title={lang === "hi" ? "कोई कारीगर नहीं मिला" : "No workers found for this search"}
+                  sub={
+                    searchQuery
+                      ? `No verified workers match "${searchQuery}". Try a different keyword or view all services.`
+                      : selectedService !== "All"
+                      ? `Currently no workers match the selected filters under ${activeServiceObj?.[lang] || selectedService}.`
+                      : "Loosen the price, availability, or TrustDNA filter to see more verified workers nearby."
+                  }
+                  action={
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      {selectedService !== "All" && (
+                        <button
+                          onClick={() => setSelectedService("All")}
+                          className="rounded-full bg-[#1B4332] px-4 py-2 text-[12.5px] font-bold text-white transition hover:bg-[#2D6A4F]"
+                        >
+                          Show all services
+                        </button>
+                      )}
+                      {searchQuery && (
+                        <button
+                          onClick={() => setSearchQuery && setSearchQuery("")}
+                          className="rounded-full bg-[#E76F51] px-4 py-2 text-[12.5px] font-bold text-white transition hover:bg-[#c65a3a]"
+                        >
+                          Clear search
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          setMaxPrice(900);
+                          setMinTrust(0);
+                          setOnlyNow(false);
+                          setSelectedService("All");
+                          if (setSearchQuery) setSearchQuery("");
+                        }}
+                        className="rounded-full bg-[#FAF9F6] px-4 py-2 text-[12.5px] font-bold text-[#1B4332] ring-1 ring-[#1B4332]/20 hover:bg-[#1B4332]/5"
+                      >
+                        Reset all filters
+                      </button>
+                    </div>
+                  }
+                />
+              </div>
             ) : list.map((w) => (
               <WorkerDetailCard key={w.id} w={w} onProfile={() => { setSelectedWorker(w.id); go("worker-profile", w.id); }} onBook={() => go("booking", w.id)} />
             ))}
@@ -322,7 +548,7 @@ export function WorkerListing({
           </aside>
         </div>
       )}
-      <CustomerBottomNav page="workers" go={go} onBook={() => go("booking", "ramesh")} />
+      <CustomerBottomNav page="workers" go={go} onBook={() => go("booking", list[0]?.id || "ramesh")} />
     </div>
   );
 }
@@ -366,7 +592,20 @@ export function WorkerProfile({
   const w = workers.find((x) => x.id === workerId) ?? workers[0];
   const [tab, setTab] = useState<"about" | "reviews" | "rates">("about");
   const [showDNA, setShowDNA] = useState(true);
+  const [showCallModal, setShowCallModal] = useState(false);
+  const [callToast, setCallToast] = useState("");
   const others = workers.filter((x) => x.id !== w.id && x.serviceId === w.serviceId).concat(workers.filter((x) => x.id !== w.id && x.serviceId !== w.serviceId)).slice(0, 3);
+
+  const simulateCall = () => {
+    setCallToast(`Connecting secure call to ${w.name} via Saharaa privacy line...`);
+    setTimeout(() => {
+      setCallToast(`Call in progress with ${w.name.split(" ")[0]} 📞`);
+      setTimeout(() => {
+        setCallToast("");
+        setShowCallModal(false);
+      }, 3000);
+    }, 1500);
+  };
 
   return (
     <div className="page-enter mx-auto max-w-6xl px-4 pb-32 pt-5 sm:px-6 md:pb-16">
@@ -399,7 +638,7 @@ export function WorkerProfile({
             <div className="flex flex-wrap items-center gap-3 p-4 sm:p-5">
               <TrustRing score={w.trustDNA} size={76} stroke={8} />
               <div className="min-w-0 flex-1">
-                <p className="flex items-center gap-2 text-[15px] font-extrabold"><Stars rating={w.rating} /> {w.rating} <span className="font-semibold text-[#4A4A4A]">• {w.jobs} jobs done</span></p>
+                <p className="flex items-center gap-2 text-[15px] font-extrabold"><Stars rating={w.rating} /> {w.rating ?? "New"} <span className="font-semibold text-[#4A4A4A]">• {w.jobs} jobs done</span></p>
                 <div className="mt-1.5 flex flex-wrap gap-1.5">{w.skills.map((s) => <span key={s} className="rounded-full bg-[#FAF9F6] px-2.5 py-1 text-[11px] font-bold ring-1 ring-[#1B4332]/10">{s}</span>)}</div>
               </div>
               <div className="text-right"><p className="text-[11px] font-bold uppercase tracking-wide text-[#8a8a8a]">Starts at</p><p className="text-[26px] font-extrabold text-[#1B4332]">₹{w.price}</p></div>
@@ -407,7 +646,7 @@ export function WorkerProfile({
             {/* TrustDNA breakdown */}
             <div className="border-t border-[#1B4332]/10 bg-[#EFFAF1]/60 px-4 py-4 sm:px-5">
               <button onClick={() => setShowDNA(!showDNA)} className="flex w-full items-center justify-between text-left">
-                <span className="flex items-center gap-2 text-[14px] font-extrabold text-[#1B4332]"><ShieldCheck className="h-5 w-5" /> TrustDNA {w.trustDNA}/100 — {lang === "hi" ? "क्यों भरोसा करें?" : "why trust this score?"}</span>
+                <span className="flex items-center gap-2 text-[14px] font-extrabold text-[#1B4332]"><ShieldCheck className="h-5 w-5" /> TrustDNA {w.trustDNA != null ? `${w.trustDNA}/100` : "Not enough data"} — {lang === "hi" ? "क्यों भरोसा करें?" : "why trust this score?"}</span>
                 <ChevronRight className={`h-5 w-5 text-[#1B4332] transition ${showDNA ? "rotate-90" : ""}`} />
               </button>
               {showDNA && (
@@ -450,9 +689,9 @@ export function WorkerProfile({
             {tab === "reviews" && (
               <div className="space-y-3">
                 {[
-                  { n: "Priya S.", t: "Fixed our leak in 40 minutes. Clean work, explained every charge. Highly recommended!", r: 5, d: "2 days ago" },
+                  { n: "Priya S.", t: `Fixed our issue in 40 minutes. Clean work, explained every charge. Highly recommended!`, r: 5, d: "2 days ago" },
                   { n: "Amit V.", t: "Polite, on time, brought own tools. Fair price locked in chat — no haggling at the door.", r: 5, d: "1 week ago" },
-                  { n: "Kavita R.", t: "Good work, took a little longer than ETA but quality was excellent.", r: 4, d: "3 weeks ago" },
+                  { n: "Kavita R.", t: "Good work, arrived promptly and quality was top-notch.", r: 5, d: "3 weeks ago" },
                 ].map((r, i) => (
                   <div key={i} className="rounded-2xl bg-[#FAF9F6] p-4 ring-1 ring-[#1B4332]/8">
                     <div className="flex items-center justify-between"><p className="text-[13.5px] font-extrabold">{r.n}</p><Stars rating={r.r} /></div>
@@ -465,10 +704,10 @@ export function WorkerProfile({
             {tab === "rates" && (
               <div className="space-y-2.5">
                 {[
-                  { s: "Visit + inspection", p: `₹${w.price}` },
-                  { s: "Standard repair (1 hr)", p: `₹${w.price + 150}` },
-                  { s: "Deep service (2–3 hrs)", p: `₹${w.price + 450}` },
-                  { s: "Emergency / night visit", p: `₹${w.price + 200}` },
+                  { s: "Inspection & diagnosis visit", p: `₹${w.price}` },
+                  { s: "Standard job service (1 hr)", p: `₹${w.price + 150}` },
+                  { s: "Deep service / multi-task (2–3 hrs)", p: `₹${w.price + 450}` },
+                  { s: "Emergency / priority visit", p: `₹${w.price + 200}` },
                 ].map((r) => (
                   <div key={r.s} className="flex items-center justify-between rounded-2xl bg-[#FAF9F6] px-4 py-3.5 ring-1 ring-[#1B4332]/8">
                     <span className="text-[13.5px] font-bold">{r.s}</span><span className="text-[15px] font-extrabold text-[#1B4332]">{r.p}</span>
@@ -485,7 +724,7 @@ export function WorkerProfile({
             {others.map((o) => (
               <button key={o.id} onClick={() => { setSelectedWorker(o.id); window.scrollTo({ top: 0 }); }} className="flex items-center gap-2.5 rounded-2xl bg-white p-3 text-left ring-1 ring-[#1B4332]/10 hover:ring-[#2D6A4F]/50">
                 <img src={o.photo} alt={o.name} className="h-12 w-12 rounded-xl object-cover" />
-                <span><span className="block text-[13px] font-extrabold">{o.name}</span><span className="block text-[11px] font-semibold text-[#4A4A4A]">◆{o.trustDNA} • ₹{o.price} • {o.distance}</span></span>
+                <span><span className="block text-[13px] font-extrabold">{o.name}</span><span className="block text-[11px] font-semibold text-[#4A4A4A]">◆{o.trustDNA != null ? o.trustDNA : "Not enough data"} • ₹{o.price} • {o.distance}</span></span>
               </button>
             ))}
           </div>
@@ -496,22 +735,55 @@ export function WorkerProfile({
           <div className="rounded-[22px] bg-white p-5 ring-1 ring-[#1B4332]/10 card-shadow-lg sm:p-6">
             <p className="flex items-center justify-between text-[14px] font-extrabold">Booking summary <span className="rounded-full bg-[#EFFAF1] px-2.5 py-1 text-[11px] text-[#1B4332]">No advance needed</span></p>
             <div className="mt-3 space-y-2 text-[13px] font-semibold text-[#4A4A4A]">
-              <Row k="Arrival" v={w.eta} />
+              <Row k="Arrival ETA" v={w.eta} />
               <Row k="Starting price" v={`₹${w.price}`} />
-              <Row k="Platform fee" v="₹0 for you" />
-              <Row k="Payment" v="After work • UPI/cash" />
+              <Row k="Platform fee" v="₹0 (FREE)" />
+              <Row k="Payment terms" v="After work • UPI/Cash" />
             </div>
             <button onClick={() => go("booking", w.id)} className="mt-4 w-full rounded-2xl bg-[#E76F51] py-4 text-[15px] font-extrabold text-white transition hover:bg-[#c65a3a] active:scale-[0.98]">
               Negotiate & Book →
             </button>
             <div className="mt-2.5 grid grid-cols-2 gap-2">
-              <button className="flex items-center justify-center gap-1.5 rounded-2xl py-3 text-[13px] font-extrabold text-[#1B4332] ring-1 ring-[#1B4332]/25 transition hover:bg-[#1B4332]/5"><MessageCircle className="h-4 w-4" /> Chat</button>
-              <button className="flex items-center justify-center gap-1.5 rounded-2xl py-3 text-[13px] font-extrabold text-[#1B4332] ring-1 ring-[#1B4332]/25 transition hover:bg-[#1B4332]/5"><Phone className="h-4 w-4" /> Call</button>
+              <button onClick={() => go("booking", w.id)} className="flex items-center justify-center gap-1.5 rounded-2xl py-3 text-[13px] font-extrabold text-[#1B4332] ring-1 ring-[#1B4332]/25 transition hover:bg-[#1B4332]/5">
+                <MessageCircle className="h-4 w-4" /> Chat
+              </button>
+              <button onClick={() => setShowCallModal(true)} className="flex items-center justify-center gap-1.5 rounded-2xl py-3 text-[13px] font-extrabold text-[#1B4332] ring-1 ring-[#1B4332]/25 transition hover:bg-[#1B4332]/5">
+                <Phone className="h-4 w-4" /> Call
+              </button>
             </div>
             <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[11.5px] font-bold text-[#4A4A4A]"><ShieldCheck className="h-3.5 w-3.5 text-[#2D6A4F]" /> Covered by Saharaa Safety Promise</p>
           </div>
         </aside>
       </div>
+
+      {/* Call modal */}
+      {showCallModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-sm rounded-[24px] bg-white p-6 shadow-2xl ring-1 ring-[#1B4332]/10 text-center animate-slide-up">
+            <img src={w.photo} alt={w.name} className="mx-auto h-20 w-20 rounded-full object-cover ring-4 ring-[#52B788]" />
+            <h3 className="mt-3 text-[18px] font-extrabold">{w.name}</h3>
+            <p className="text-xs font-semibold text-[#4A4A4A]">{w.service} • ◆ {w.trustDNA != null ? `${w.trustDNA} TrustDNA` : "Not enough data"}</p>
+            <div className="mt-4 rounded-2xl bg-[#EFFAF1] p-3 text-left text-xs font-bold text-[#1B4332] ring-1 ring-[#2D6A4F]/20">
+              <ShieldCheck className="inline h-4 w-4 text-[#2D6A4F] mr-1.5" />
+              Saharaa Privacy Shield active: your personal phone number is masked and protected.
+            </div>
+            <p className="mt-3 text-xs font-bold text-[#4A4A4A]">Masked line: <span className="text-[#1A1A1A] font-extrabold">+91 98118-XX482</span></p>
+            {callToast ? (
+              <p className="mt-3 rounded-xl bg-[#1B4332] py-2.5 text-xs font-bold text-white animate-pulse">{callToast}</p>
+            ) : (
+              <div className="mt-4 grid gap-2">
+                <button onClick={simulateCall} className="w-full rounded-2xl bg-[#1B4332] py-3.5 text-sm font-extrabold text-white transition hover:bg-[#2D6A4F]">
+                  📞 Call via Saharaa Line
+                </button>
+                <a href="tel:18007242722" className="block w-full rounded-2xl bg-[#FAF9F6] py-3 text-xs font-bold text-[#4A4A4A] ring-1 ring-[#1B4332]/10 hover:bg-[#FAF9F6]/80">
+                  Dial Toll-Free (1800-SAHARAA)
+                </a>
+              </div>
+            )}
+            <button onClick={() => setShowCallModal(false)} className="mt-3 text-xs font-bold text-[#8a8a8a] hover:text-[#1A1A1A]">Cancel</button>
+          </div>
+        </div>
+      )}
 
       {/* mobile sticky CTA */}
       <div className="fixed inset-x-0 bottom-[72px] z-30 px-4 md:hidden">

@@ -120,7 +120,7 @@ export default function App() {
         selectedWorker: validWorker,
         lockedPrice, searchQuery, scheduleMode, scheduleDate, address, partsApproved
       }));
-    } catch {}
+    } catch { }
 
     // Dynamic title updates for SEO and UX
     const serviceName = selectedService !== "All" ? `${selectedService} in ` : "";
