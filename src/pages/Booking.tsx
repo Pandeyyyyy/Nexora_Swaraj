@@ -1,21 +1,23 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
   ArrowRight, BadgeCheck, Camera, CheckCircle2, ChevronLeft, Clock, ImagePlus,
-  Lock, MapPin, MessageCircle, Mic, Navigation, Phone, ShieldCheck, Star,
-  AlertTriangle, Wallet, RotateCcw, Send, Sparkles, Timer, FileText, ChevronRight, X,
-  Loader2, AlertCircle, RefreshCw, CheckCheck, Undo2
+  Lock, MapPin, Phone, ShieldCheck, Star,
+  AlertTriangle, Wallet, RotateCcw, Send, Sparkles, Timer, FileText, ChevronRight,
+  Loader2, AlertCircle, RefreshCw, CheckCheck
 } from "lucide-react";
 import { workers, serviceJobConfigs } from "../data";
 import type { OfferMsg } from "../data";
-import { CustomerBottomNav, Stars, TrustRing, EmptyState } from "../components/shared";
+import { CustomerBottomNav, Stars, TrustRing } from "../components/shared";
 import type { Page } from "../components/shared";
 import { useAuth } from "../contexts/AuthContext";
 import {
   createBooking, fetchBookingById, fetchBookingOffers, fetchBookingEvents,
   submitCounterOffer, acceptOffer, updateBookingStatus, fetchCustomerBookings,
-  type DbBooking, type DbNegotiationOffer, type DbBookingEvent
+  isValidUuid, type DbBooking, type DbNegotiationOffer, type DbBookingEvent
 } from "../lib/bookings";
 import { fetchWorkerById, normalizeWorker } from "../lib/marketplace";
+import { isDemoWorkerId } from "../data";
+import { isDemoBookingId } from "../lib/demoBookings";
 
 /* ================= BOOKING + FAIRFARE ================= */
 export function BookingFlow({
@@ -28,7 +30,21 @@ export function BookingFlow({
   scheduleDate?: string; setScheduleDate?: (d: string) => void;
   address?: string; setAddress?: (a: string) => void;
 }) {
-  const w = workers.find((x) => x.id === workerId) ?? workers[0];
+  // Marketplace cards carry UUIDs from Supabase. Retain the local sample only
+  // for the offline demo, never as a substitute for a real selected worker.
+  const fallbackWorker = workers.find((x) => x.id === workerId) ?? workers[0];
+  const [selectedWorker, setSelectedWorker] = useState(fallbackWorker);
+  useEffect(() => {
+    const localWorker = workers.find((x) => x.id === workerId);
+    if (localWorker) {
+      setSelectedWorker(localWorker);
+      return;
+    }
+    fetchWorkerById(workerId).then(({ data }) => {
+      if (data) setSelectedWorker(normalizeWorker(data));
+    });
+  }, [workerId]);
+  const w = selectedWorker;
   const cfg = serviceJobConfigs[w.serviceId] || serviceJobConfigs["plumbing"];
 
   const [step, setStep] = useState(1);
@@ -421,6 +437,8 @@ function ConfirmBooking({
   serviceName: string; jobTitle: string; jobDesc: string; serviceId?: string;
 }) {
   const { user, profile, isAuthenticated } = useAuth();
+  const isDemoWorker = isDemoWorkerId(wId);
+  const isInvalidWorker = !isDemoWorker && !isValidUuid(wId);
   const w = workers.find((x) => x.id === wId) || {
     id: wId,
     name: "Verified Worker",
@@ -436,14 +454,21 @@ function ConfirmBooking({
   const handleConfirm = async () => {
     if (submitting) return;
 
-    if (!isAuthenticated || !user) {
-      setErrorMsg(lang === "hi" ? "बुकिंग की पुष्टि करने के लिए कृपया पहले लॉगिन करें।" : "Please sign in to your Saharaa account to confirm and persist this booking.");
+    if (isInvalidWorker) {
+      setErrorMsg('This worker profile is invalid. Choose a live verified worker or a labelled demo worker.');
       return;
     }
 
-    if (profile?.role === "worker") {
-      setErrorMsg(lang === "hi" ? "कारीगर खाता बुकिंग नहीं कर सकता। कृपया ग्राहक खाते से लॉगिन करें।" : "Workers cannot book services. Please sign in with a customer account.");
-      return;
+    if (!isDemoWorker) {
+      if (!isAuthenticated || !user) {
+        setErrorMsg(lang === "hi" ? "बुकिंग की पुष्टि करने के लिए कृपया पहले लॉगिन करें।" : "Please sign in to your Saharaa account to confirm and persist this booking.");
+        return;
+      }
+
+      if (profile?.role === "worker") {
+        setErrorMsg(lang === "hi" ? "कारीगर खाता बुकिंग नहीं कर सकता। कृपया ग्राहक खाते से लॉगिन करें।" : "Workers cannot book services. Please sign in with a customer account.");
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -486,7 +511,7 @@ function ConfirmBooking({
         <Lock className="h-6 w-6 text-[#2D6A4F]" />
         <div>
           <p className="text-[13px] font-bold text-[#1B4332]">FAIRFARE PROPOSED PRICE</p>
-          <p className="text-[22px] font-extrabold text-[#1B4332]">₹{price} <span className="text-[12px] font-bold text-[#4A4A4A]">initial offer • saved to database</span></p>
+          <p className="text-[22px] font-extrabold text-[#1B4332]">₹{price} <span className="text-[12px] font-bold text-[#4A4A4A]">initial offer{isDemoWorker ? ' • simulated in this browser' : ' • saved to database'}</span></p>
         </div>
       </div>
 
@@ -525,8 +550,8 @@ function ConfirmBooking({
 
       <button
         onClick={handleConfirm}
-        disabled={submitting}
-        className={`mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#1B4332] py-4 text-[15px] font-extrabold text-white transition hover:bg-[#2D6A4F] active:scale-[0.98] ${submitting ? "opacity-75 cursor-not-allowed" : ""}`}
+        disabled={submitting || isInvalidWorker}
+        className={`mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#1B4332] py-4 text-[15px] font-extrabold text-white transition hover:bg-[#2D6A4F] active:scale-[0.98] ${(submitting || isInvalidWorker) ? "opacity-75 cursor-not-allowed" : ""}`}
       >
         {submitting ? (
           <>
@@ -534,7 +559,7 @@ function ConfirmBooking({
             <span>Persisting booking to database…</span>
           </>
         ) : (
-          lang === "hi" ? "बुकिंग पक्की करें ✓" : "Confirm booking ✓"
+          isInvalidWorker ? 'Invalid worker profile' : (isDemoWorker ? 'Confirm simulated booking ✓' : (lang === "hi" ? "बुकिंग पक्की करें ✓" : "Confirm booking ✓"))
         )}
       </button>
       <p className="mt-2.5 text-center text-[11.5px] font-bold text-[#8a8a8a]">Free cancellation • SOS & support always on • Database protected</p>
@@ -546,20 +571,20 @@ function ConfirmBooking({
 const stages = ["Requested", "Accepted", "On the Way", "In Progress", "Completed"];
 
 export function Tracking({
-  go, lang, workerId, price = 450, schedule = "asap", date = "Tomorrow, 10:00 AM", address = "B-42, Laxmi Nagar, Delhi 110092",
+  go, lang: _lang, workerId, price = 450, schedule = "asap", date = "Tomorrow, 10:00 AM", address = "B-42, Laxmi Nagar, Delhi 110092",
   bookingId, partsApproved = false, setPartsApproved,
 }: {
   go: (p: Page, widOrOpts?: any) => void; lang: "en" | "hi"; workerId: string; price: number;
   schedule?: "asap" | "later"; date?: string; address?: string;
   bookingId?: string; partsApproved?: boolean; setPartsApproved?: (b: boolean) => void;
 }) {
-  const { user } = useAuth();
   const staticWorker = workers.find((x) => x.id === workerId) ?? workers[0];
   const cfg = serviceJobConfigs[staticWorker.serviceId] || serviceJobConfigs["plumbing"];
 
   const [dbBooking, setDbBooking] = useState<DbBooking | null>(null);
   const [dbOffers, setDbOffers] = useState<DbNegotiationOffer[]>([]);
   const [dbEvents, setDbEvents] = useState<DbBookingEvent[]>([]);
+  const [customerBookings, setCustomerBookings] = useState<DbBooking[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeBookingId, setActiveBookingId] = useState<string | null>(bookingId || null);
 
@@ -578,20 +603,24 @@ export function Tracking({
   const [reportSubmitted, setReportSubmitted] = useState(false);
   const [toast, setToast] = useState("");
 
-  // Load real booking from Supabase
+  // Load real booking from Supabase or local demo storage
   const loadBookingData = useCallback(async () => {
+    setLoading(true);
+    const custRes = await fetchCustomerBookings();
+    const list = custRes.data || [];
+    setCustomerBookings(list);
+
     let targetId = activeBookingId;
-    if (!targetId) {
-      const custRes = await fetchCustomerBookings();
-      if (custRes.data && custRes.data.length > 0) {
-        targetId = custRes.data[0].id;
-        setActiveBookingId(targetId);
-      }
+    if (!targetId && list.length > 0) {
+      targetId = list[0].id;
+      setActiveBookingId(targetId);
     }
 
-    if (!targetId) return;
+    if (!targetId) {
+      setLoading(false);
+      return;
+    }
 
-    setLoading(true);
     const [bRes, oRes, eRes] = await Promise.all([
       fetchBookingById(targetId),
       fetchBookingOffers(targetId),
@@ -627,7 +656,6 @@ export function Tracking({
   const workerAvatar = dbBooking?.worker?.avatar_url || staticWorker.photo;
 
   // FairFare Actions
-  const latestOffer = dbOffers[dbOffers.length - 1];
   const pendingWorkerOffer = dbOffers.find(
     (o) => o.offer_status === "pending" && o.proposer_role === "worker"
   );
@@ -636,7 +664,7 @@ export function Tracking({
     if (!activeBookingId || actionLoading) return;
     setActionLoading(true);
     setStatusMessage(null);
-    const res = await acceptOffer(activeBookingId, offer.id, offer.offered_price);
+    const res = await acceptOffer(activeBookingId, offer.id, offer.offered_price, "customer");
     setActionLoading(false);
     if (!res.success) {
       setStatusMessage(res.error || "Failed to accept offer");
@@ -656,7 +684,7 @@ export function Tracking({
     }
     setActionLoading(true);
     setStatusMessage(null);
-    const res = await submitCounterOffer(activeBookingId, priceVal, `Customer countered with ₹${priceVal}`);
+    const res = await submitCounterOffer(activeBookingId, priceVal, `Customer countered with ₹${priceVal}`, "customer");
     setActionLoading(false);
     setCounterInput("");
     if (!res.success) {
@@ -699,6 +727,8 @@ export function Tracking({
     }, 2500);
   };
 
+  const isDemo = isDemoBookingId(dbBooking?.id) || isDemoBookingId(activeBookingId);
+
   return (
     <div className="page-enter mx-auto max-w-6xl px-4 pb-32 pt-5 sm:px-6 md:pb-16">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -706,6 +736,14 @@ export function Tracking({
           <ChevronLeft className="h-4 w-4" /> Home
         </button>
         <div className="flex items-center gap-2">
+          {isDemo && (
+            <button
+              onClick={() => go("demo-worker")}
+              className="rounded-full bg-[#E76F51] px-3.5 py-1.5 text-xs font-extrabold text-white transition hover:bg-[#c65a3a]"
+            >
+              Open Demo Worker Mode 🛠️
+            </button>
+          )}
           <button
             onClick={loadBookingData}
             title="Refresh database state"
@@ -719,6 +757,50 @@ export function Tracking({
           </span>
         </div>
       </div>
+
+      {/* Demo Booking Notice */}
+      {isDemo && (
+        <div className="animate-fade-in mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-dashed border-[#E76F51]/50 bg-[#FEF6EC] px-4 py-2.5 text-xs font-bold text-[#8A4B10]">
+          <div className="flex items-center gap-2">
+            <span className="rounded-full bg-[#E76F51] px-2 py-0.5 text-[9.5px] font-black uppercase text-white">
+              DEMO BOOKING
+            </span>
+            <span>Simulated in browser storage. Counter or advance this job using <strong>Demo Worker Mode</strong>.</span>
+          </div>
+          <button
+            onClick={() => go("demo-worker")}
+            className="underline font-extrabold text-[#E76F51] hover:text-[#8A4B10]"
+          >
+            Switch to assigned worker view →
+          </button>
+        </div>
+      )}
+
+      {/* Multi-booking switcher if customer has more than 1 booking */}
+      {customerBookings.length > 1 && (
+        <div className="no-scrollbar mt-3 flex items-center gap-2 overflow-x-auto pb-1">
+          <span className="text-[11px] font-extrabold text-[#4A4A4A] shrink-0">Your Bookings:</span>
+          {customerBookings.map((b) => {
+            const isSelected = b.id === (activeBookingId || dbBooking?.id);
+            return (
+              <button
+                key={b.id}
+                onClick={() => {
+                  setActiveBookingId(b.id);
+                  setStatusMessage(null);
+                }}
+                className={`shrink-0 rounded-full px-3 py-1 text-xs font-extrabold transition ${
+                  isSelected
+                    ? "bg-[#1B4332] text-white shadow"
+                    : "bg-white ring-1 ring-[#1B4332]/12 text-[#4A4A4A] hover:bg-[#FAF9F6]"
+                }`}
+              >
+                {b.booking_number} • {b.job_title} ({b.booking_status})
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {statusMessage && (
         <div className="animate-fade-in mt-3 flex items-center gap-2 rounded-2xl bg-[#FFEBEE] px-4 py-2.5 text-[12.5px] font-bold text-[#C62828] ring-1 ring-[#EF5350]/30">
@@ -1137,7 +1219,7 @@ export function Tracking({
 
 /* ================= PAYMENT & REVIEW ================= */
 export function PaymentReview({
-  go, lang, workerId, price = 450, partsApproved = false, schedule = "asap", date = "Tomorrow, 10:00 AM", address = "B-42, Laxmi Nagar, Delhi 110092",
+  go, lang, workerId, price = 450, partsApproved = false, schedule: _schedule = "asap", date: _date = "Tomorrow, 10:00 AM", address: _address = "B-42, Laxmi Nagar, Delhi 110092",
 }: {
   go: (p: Page, widOrOpts?: any) => void; lang: "en" | "hi"; workerId: string; price: number;
   partsApproved?: boolean; schedule?: "asap" | "later"; date?: string; address?: string;

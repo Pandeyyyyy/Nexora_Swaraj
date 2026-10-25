@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { HeartHandshake } from "lucide-react";
+import { DEFAULT_DEMO_WORKER_ID } from "./data";
 import { TopNav, DemoBar, type Page } from "./components/shared";
 import Landing from "./pages/Landing";
 import { CustomerHome, WorkerListing, WorkerProfile } from "./pages/Customer";
 import { BookingFlow, Tracking, PaymentReview } from "./pages/Booking";
 import { WorkerDashboard, WorkerOnboarding, WorkerJobs, WorkerEarnings, Auth } from "./pages/Worker";
+import { DemoWorkerDashboard } from "./pages/DemoWorker";
 import { Admin, Impact } from "./pages/AdminImpact";
 import { useAuth } from "./contexts/AuthContext";
 
@@ -38,7 +40,7 @@ function getValidWorkerId(val: unknown): string | null {
 }
 
 export default function App() {
-  const { user, profile, role: authRole, isLoading: authLoading, isAuthenticated } = useAuth();
+  const { role: authRole, isLoading: authLoading, isAuthenticated } = useAuth();
   const stored = getStoredState();
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
 
@@ -61,16 +63,17 @@ export default function App() {
 
   const initialPage = (hashParams.get("page") as Page) || stored?.page || "landing";
   const isInitialWorkerPage = ["worker-profile", "booking", "tracking", "payment"].includes(initialPage);
-  const initialWorkerId = getValidWorkerId(hashParams.get("worker")) || (isInitialWorkerPage ? getValidWorkerId(stored?.selectedWorker) || "ramesh" : null);
+  const initialWorkerId = getValidWorkerId(hashParams.get("worker")) || (isInitialWorkerPage ? getValidWorkerId(stored?.selectedWorker) || DEFAULT_DEMO_WORKER_ID : null);
 
   const [selectedWorker, setSelectedWorker] = useState<string | null>(initialWorkerId);
+  const [activeBookingId, setActiveBookingId] = useState<string | null>(hashParams.get("booking") || stored?.activeBookingId || null);
   const [lockedPrice, setLockedPrice] = useState<number>(
     hashParams.get("price") ? Number(hashParams.get("price")) : stored?.lockedPrice || 450
   );
   const [searchQuery, setSearchQuery] = useState(
     hashParams.get("q") || stored?.searchQuery || ""
   );
-  const [scheduleMode, setScheduleMode] = useState<"asap" | "schedule">(
+  const [scheduleMode, setScheduleMode] = useState<"asap" | "later">(
     (hashParams.get("schedule") as any) || stored?.scheduleMode || "asap"
   );
   const [scheduleDate, setScheduleDate] = useState(
@@ -106,6 +109,7 @@ export default function App() {
     if (validWorker && isWorkerPage) {
       params.set("worker", validWorker);
     }
+    if (activeBookingId && page === "tracking") params.set("booking", activeBookingId);
 
     if (lockedPrice) params.set("price", lockedPrice.toString());
     if (searchQuery) params.set("q", searchQuery);
@@ -122,14 +126,14 @@ export default function App() {
       sessionStorage.setItem("saharaa_state", JSON.stringify({
         page, role, lang, location, selectedService,
         selectedWorker: validWorker,
-        lockedPrice, searchQuery, scheduleMode, scheduleDate, address, partsApproved
+        lockedPrice, searchQuery, scheduleMode, scheduleDate, address, partsApproved, activeBookingId
       }));
     } catch { }
 
     // Dynamic title updates for SEO and UX
     const serviceName = selectedService !== "All" ? `${selectedService} in ` : "";
     document.title = `Saharaa — ${serviceName}${location.split(",")[0]}`;
-  }, [page, role, lang, location, selectedService, selectedWorker, lockedPrice, searchQuery, scheduleMode, scheduleDate, address, partsApproved]);
+  }, [page, role, lang, location, selectedService, selectedWorker, lockedPrice, searchQuery, scheduleMode, scheduleDate, address, partsApproved, activeBookingId]);
 
   // Synchronize authenticated role from Supabase Auth
   useEffect(() => {
@@ -180,7 +184,8 @@ export default function App() {
 
       const isWorkerPage = ["worker-profile", "booking", "tracking", "payment"].includes(newPage);
       const workerParam = getValidWorkerId(p.get("worker"));
-      setSelectedWorker(workerParam || (isWorkerPage ? "ramesh" : null));
+      setSelectedWorker(workerParam || (isWorkerPage ? DEFAULT_DEMO_WORKER_ID : null));
+      setActiveBookingId(p.get("booking"));
 
       if (p.get("loc")) setLocation(p.get("loc")!);
       if (p.get("q") !== null) setSearchQuery(p.get("q")!);
@@ -226,7 +231,7 @@ export default function App() {
     } else if (!isWorkerFlow) {
       setSelectedWorker(null);
     } else if (isWorkerFlow && !selectedWorker) {
-      setSelectedWorker("ramesh");
+      setSelectedWorker(DEFAULT_DEMO_WORKER_ID);
     }
 
     if (typeof wid === "object" && wid !== null) {
@@ -235,10 +240,11 @@ export default function App() {
       if (typeof payload.searchQuery === "string") setSearchQuery(payload.searchQuery);
       if (typeof payload.location === "string") setLocation(payload.location);
       if (typeof payload.price === "number") setLockedPrice(payload.price);
-      if (typeof payload.schedule === "string") setScheduleMode(payload.schedule);
+      if (payload.schedule === "asap" || payload.schedule === "later") setScheduleMode(payload.schedule);
       if (typeof payload.date === "string") setScheduleDate(payload.date);
       if (typeof payload.address === "string") setAddress(payload.address);
       if (typeof payload.partsApproved === "boolean") setPartsApproved(payload.partsApproved);
+      if (typeof payload.bookingId === "string") setActiveBookingId(payload.bookingId);
     }
 
     setPage(targetPage);
@@ -292,10 +298,9 @@ export default function App() {
             go={go}
             lang={lang}
             location={location}
-            setLocation={setLocation}
             selectedService={selectedService}
             setSelectedService={setSelectedService}
-            selectedWorker={selectedWorker || "ramesh"}
+            selectedWorker={selectedWorker || DEFAULT_DEMO_WORKER_ID}
             setSelectedWorker={setWorkerId}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
@@ -314,7 +319,6 @@ export default function App() {
             setSelectedWorker={setWorkerId}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
-            scheduleMode={scheduleMode}
             location={location}
           />
         )}
@@ -322,7 +326,7 @@ export default function App() {
           <WorkerProfile
             go={go}
             lang={lang}
-            workerId={selectedWorker || "ramesh"}
+            workerId={selectedWorker || DEFAULT_DEMO_WORKER_ID}
             setSelectedWorker={setWorkerId}
           />
         )}
@@ -330,7 +334,7 @@ export default function App() {
           <BookingFlow
             go={go}
             lang={lang}
-            workerId={selectedWorker || "ramesh"}
+            workerId={selectedWorker || DEFAULT_DEMO_WORKER_ID}
             onLocked={(p) => setLockedPrice(p)}
             scheduleMode={scheduleMode}
             setScheduleMode={setScheduleMode}
@@ -344,27 +348,29 @@ export default function App() {
           <Tracking
             go={go}
             lang={lang}
-            workerId={selectedWorker || "ramesh"}
+            workerId={selectedWorker || DEFAULT_DEMO_WORKER_ID}
             price={lockedPrice}
             partsApproved={partsApproved}
             setPartsApproved={setPartsApproved}
-            scheduleMode={scheduleMode}
-            scheduleDate={scheduleDate}
+            schedule={scheduleMode}
+            date={scheduleDate}
             address={address}
+            bookingId={activeBookingId || undefined}
           />
         )}
         {page === "payment" && (
           <PaymentReview
             go={go}
             lang={lang}
-            workerId={selectedWorker || "ramesh"}
+            workerId={selectedWorker || DEFAULT_DEMO_WORKER_ID}
             price={lockedPrice}
             partsApproved={partsApproved}
-            scheduleMode={scheduleMode}
-            scheduleDate={scheduleDate}
+            schedule={scheduleMode}
+            date={scheduleDate}
           />
         )}
         {page === "worker-dashboard" && <WorkerDashboard go={go} lang={lang} />}
+        {page === "demo-worker" && <DemoWorkerDashboard go={go} lang={lang} initialWorkerId={selectedWorker || DEFAULT_DEMO_WORKER_ID} />}
         {page === "worker-onboarding" && <WorkerOnboarding go={go} />}
         {page === "worker-jobs" && <WorkerJobs go={go} />}
         {page === "worker-earnings" && <WorkerEarnings go={go} lang={lang} />}

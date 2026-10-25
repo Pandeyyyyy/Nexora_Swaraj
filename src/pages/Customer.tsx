@@ -1,22 +1,24 @@
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   BadgeCheck, Camera, CheckCircle2, ChevronLeft, ChevronRight, Clock,
   List, Map as MapIcon, MapPin, MessageCircle, Navigation, Phone, Search,
-  ShieldCheck, SlidersHorizontal, Star, X, Zap, Heart, RefreshCw, AlertCircle, Loader2
+  ShieldCheck, SlidersHorizontal, Star, X, Zap, Heart, RefreshCw, AlertCircle
 } from "lucide-react";
-import { services, workers } from "../data";
+import { services, workers, DEFAULT_DEMO_WORKER_ID, findDemoWorkers } from "../data";
 import type { Worker } from "../data";
 import { CustomerBottomNav, ServiceIcon, Stars, TrustRing, VoiceButton, EmptyState, SkeletonCard } from "../components/shared";
 import type { Page } from "../components/shared";
 import {
   fetchServices, fetchMarketplaceWorkers, fetchWorkerById, normalizeWorker,
-  type MarketplaceService, type MarketplaceWorker
+  type MarketplaceService
 } from "../lib/marketplace";
+import { fetchCustomerBookings, type DbBooking } from "../lib/bookings";
+import { isDemoWorkerId } from "../data";
 
 /* ================= CUSTOMER HOME ================= */
 export function CustomerHome({
   go, lang, location, selectedService, setSelectedService, selectedWorker, setSelectedWorker,
-  searchQuery, setSearchQuery, scheduleMode, setScheduleMode, scheduleDate, setScheduleDate,
+  searchQuery, setSearchQuery, scheduleMode: _scheduleMode, setScheduleMode, scheduleDate, setScheduleDate,
 }: {
   go: (p: Page, opts?: any) => void; lang: "en" | "hi"; location: string;
   selectedService: string; setSelectedService: (s: string) => void;
@@ -31,6 +33,13 @@ export function CustomerHome({
   const [filter, setFilter] = useState("All");
   const [liked, setLiked] = useState<string[]>([]);
   const [showSchedulePicker, setShowSchedulePicker] = useState(false);
+  const [myBookings, setMyBookings] = useState<DbBooking[]>([]);
+
+  useEffect(() => {
+    fetchCustomerBookings().then((res) => {
+      if (res.data) setMyBookings(res.data);
+    });
+  }, []);
 
   // 1. Live Services Catalog from Supabase
   const [catalog, setCatalog] = useState<MarketplaceService[]>([]);
@@ -98,6 +107,13 @@ export function CustomerHome({
   }, [loadWorkers]);
 
   const nearby = workersList;
+  const demoNearby = findDemoWorkers({
+    serviceId: selectedService,
+    query: q,
+    location,
+    onlyAvailableNow: filter === "ASAP" || filter === "Available now",
+    sortBy: filter === "Top rated" ? "Highest rated" : filter === "Budget" ? "Price: low to high" : "Recommended"
+  });
 
 
   const handleFilterClick = (fEn: string) => {
@@ -255,6 +271,49 @@ export function CustomerHome({
         </div>
       )}
 
+      {/* Customer Booking History Quick Access */}
+      {myBookings.length > 0 && (
+        <div className="animate-fade-in mt-4 rounded-[22px] bg-white p-4 sm:p-5 ring-1 ring-[#1B4332]/10 card-shadow">
+          <div className="flex items-center justify-between">
+            <h2 className="text-[15px] font-extrabold text-[#1B4332] flex items-center gap-1.5">
+              <Clock className="h-4 w-4 text-[#E76F51]" />
+              Your Active & Recent Bookings ({myBookings.length})
+            </h2>
+            <button
+              onClick={() => go("tracking", { bookingId: myBookings[0].id })}
+              className="text-xs font-bold text-[#2D6A4F] hover:underline"
+            >
+              View Tracking →
+            </button>
+          </div>
+          <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
+            {myBookings.slice(0, 2).map((b) => (
+              <div
+                key={b.id}
+                onClick={() => go("tracking", { bookingId: b.id, workerId: b.worker_id })}
+                className="flex items-center justify-between gap-3 rounded-2xl bg-[#FAF9F6] p-3.5 ring-1 ring-[#1B4332]/8 hover:ring-[#2D6A4F]/30 transition cursor-pointer"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[11px] font-black text-[#8A4B10]">{b.booking_number}</span>
+                    <span className="rounded-full bg-white px-2 py-0.5 text-[9.5px] font-extrabold uppercase text-[#2D6A4F] ring-1 ring-[#1B4332]/10">
+                      {b.booking_status.replace(/_/g, " ")}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs font-extrabold text-[#1A1A1A] truncate">{b.job_title}</p>
+                  <p className="text-[11px] font-semibold text-[#8a8a8a] truncate">
+                    With {b.worker?.full_name || "Assigned Worker"} • ₹{b.locked_price}
+                  </p>
+                </div>
+                <span className="rounded-full bg-[#1B4332] p-2 text-white shrink-0">
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* categories */}
       <div className="mt-6 flex items-center justify-between">
         <h2 className="text-[16px] font-extrabold">{lang === "hi" ? "सेवा चुनें" : "Choose a service"}</h2>
@@ -397,13 +456,25 @@ export function CustomerHome({
         </div>
       )}
 
+      <section className="mt-8 rounded-[22px] border border-dashed border-[#E76F51]/45 bg-[#FEF6EC] p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div><h2 className="text-[16px] font-extrabold text-[#8A4B10]">Explore demo workers <span className="ml-1 rounded-full bg-[#E76F51]/15 px-2 py-1 text-[10px]">SIMULATED</span></h2><p className="mt-1 text-xs font-semibold text-[#6B5A4B]">Hackathon-only profiles. Bookings stay in this browser and never reach Supabase.</p></div>
+          <button onClick={() => go("workers", { service: selectedService, searchQuery: q })} className="text-[12px] font-extrabold text-[#8A4B10] underline">View all demo workers</button>
+        </div>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {demoNearby.slice(0, 3).map((w) => <WorkerRowCard key={w.id} w={w} go={go} liked={liked.includes(w.id)} onLike={() => setLiked((l) => l.includes(w.id) ? l.filter((x) => x !== w.id) : [...l, w.id])} onSelect={() => { setSelectedWorker(w.id); go("worker-profile", w.id); }} />)}
+        </div>
+      </section>
 
-      <CustomerBottomNav page="customer-home" go={go} onBook={() => go("booking", selectedWorker || "ramesh")} />
+
+      <CustomerBottomNav page="customer-home" go={go} onBook={() => go("booking", selectedWorker || DEFAULT_DEMO_WORKER_ID)} />
     </div>
   );
 }
 
 export function WorkerRowCard({ w, go, liked, onLike, onSelect }: { w: Worker; go: (p: Page, w?: string) => void; liked: boolean; onLike: () => void; onSelect: () => void }) {
+  const isDemo = w.source === "demo" || isDemoWorkerId(w.id);
+
   return (
     <div className="flex gap-3.5 rounded-[18px] bg-white p-3.5 ring-1 ring-[#1B4332]/10 card-shadow transition hover:ring-[#2D6A4F]/40">
       <button onClick={onSelect} className="relative shrink-0">
@@ -413,7 +484,16 @@ export function WorkerRowCard({ w, go, liked, onLike, onSelect }: { w: Worker; g
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-2">
           <button onClick={onSelect} className="min-w-0 text-left">
-            <p className="flex items-center gap-1 truncate text-[14.5px] font-extrabold">{w.name} {w.verified && <BadgeCheck className="h-4 w-4 shrink-0 fill-[#52B788] text-white" />}</p>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <p className="truncate text-[14.5px] font-extrabold">{w.name}</p>
+              {isDemo ? (
+                <span className="rounded-full bg-[#E76F51]/15 px-1.5 py-0.5 text-[9px] font-black text-[#8A4B10]">
+                  DEMO
+                </span>
+              ) : (
+                w.verified && <BadgeCheck className="h-4 w-4 shrink-0 fill-[#52B788] text-white" />
+              )}
+            </div>
             <p className="truncate text-[12px] font-semibold text-[#4A4A4A]">{w.service} • {w.distance} • {w.eta}</p>
           </button>
           <button onClick={onLike} aria-label="Save" className={`grid h-8 w-8 shrink-0 place-items-center rounded-full transition active:scale-90 ${liked ? "bg-[#E76F51]/12 text-[#E76F51]" : "bg-[#FAF9F6] text-[#8a8a8a]"}`}>
@@ -421,10 +501,19 @@ export function WorkerRowCard({ w, go, liked, onLike, onSelect }: { w: Worker; g
           </button>
         </div>
         <div className="mt-1.5 flex items-center justify-between">
-          <span className="flex items-center gap-1 text-[12px] font-bold"><Star className="h-3.5 w-3.5 fill-[#F4A261] text-[#F4A261]" />{w.rating ?? "New"} <span className="font-semibold text-[#8a8a8a]">({w.jobs})</span> <span className="ml-1 rounded-full bg-[#EFFAF1] px-2 py-0.5 text-[10.5px] font-extrabold text-[#1B4332]">◆ {w.trustDNA != null ? w.trustDNA : "Not enough data"}</span></span>
+          <span className="flex items-center gap-1 text-[12px] font-bold">
+            <Star className="h-3.5 w-3.5 fill-[#F4A261] text-[#F4A261]" />
+            {w.rating ?? "New"}
+            <span className="font-semibold text-[#8a8a8a]">({w.jobs})</span>
+            <span className="ml-1 rounded-full bg-[#EFFAF1] px-2 py-0.5 text-[10.5px] font-extrabold text-[#1B4332]">
+              {isDemo ? "Simulated" : `◆ ${w.trustDNA != null ? w.trustDNA : "Not enough data"}`}
+            </span>
+          </span>
           <span className="text-[15px] font-extrabold text-[#1B4332]">₹{w.price}<span className="text-[10.5px] font-bold text-[#8a8a8a]">+</span></span>
         </div>
-        <button onClick={() => go("booking", w.id)} className="mt-2 w-full rounded-xl bg-[#1B4332] py-2 text-[12.5px] font-extrabold text-white transition hover:bg-[#2D6A4F] active:scale-[0.98]">Negotiate & Book →</button>
+        <button onClick={() => go("booking", w.id)} className="mt-2 w-full rounded-xl bg-[#1B4332] py-2 text-[12.5px] font-extrabold text-white transition hover:bg-[#2D6A4F] active:scale-[0.98]">
+          Negotiate & Book →
+        </button>
       </div>
     </div>
   );
@@ -501,7 +590,17 @@ export function WorkerListing({
   }, [loadWorkers]);
 
   const list = workersList;
+  const demoList = findDemoWorkers({
+    serviceId: selectedService,
+    query: searchQuery,
+    location,
+    onlyAvailableNow: onlyNow,
+    maxPrice,
+    minTrust,
+    sortBy: sort,
+  });
   const activeServiceObj = displayServices.find((s) => s.id === selectedService);
+  const totalDisplayCount = list.length + demoList.length;
 
   return (
     <div className="page-enter mx-auto max-w-6xl px-4 pb-28 pt-5 sm:px-6 md:pb-16">
@@ -509,10 +608,14 @@ export function WorkerListing({
       <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-[24px] font-black tracking-tight sm:text-[30px]">
-            {selectedService === "All" ? (lang === "hi" ? "सभी सत्यापित कारीगर" : "All verified workers") : (activeServiceObj ? (lang === "hi" ? activeServiceObj.hi : activeServiceObj.en) : selectedService)}{" "}
-            <span className="text-[#8a8a8a] text-[16px] font-bold">({list.length})</span>
+            {selectedService === "All" ? (lang === "hi" ? "सभी सेवा कारीगर" : "All Marketplace Workers") : (activeServiceObj ? (lang === "hi" ? activeServiceObj.hi : activeServiceObj.en) : selectedService)}{" "}
+            <span className="text-[#8a8a8a] text-[16px] font-bold">({totalDisplayCount})</span>
           </h1>
-          {location && <p className="text-xs font-bold text-[#4A4A4A] mt-0.5"><MapPin className="inline h-3 w-3 text-[#E76F51] mr-1" />{location}</p>}
+          <p className="text-xs font-bold text-[#4A4A4A] mt-0.5 flex items-center gap-2 flex-wrap">
+            {location && <span><MapPin className="inline h-3 w-3 text-[#E76F51] mr-1" />{location}</span>}
+            <span className="text-[#2D6A4F] font-extrabold">{list.length} verified live</span>
+            <span className="text-[#8A4B10] font-extrabold">• {demoList.length} demo simulated</span>
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex rounded-full bg-white p-1 ring-1 ring-[#1B4332]/12">
@@ -645,54 +748,42 @@ export function WorkerListing({
               <div className="sm:col-span-2 grid gap-4 sm:grid-cols-2">
                 {[1, 2, 3, 4].map((i) => <SkeletonCard key={i} />)}
               </div>
-            ) : list.length === 0 ? (
+            ) : list.length > 0 ? (
+              list.map((w) => (
+                <WorkerDetailCard key={w.id} w={w} onProfile={() => { setSelectedWorker(w.id); go("worker-profile", w.id); }} onBook={() => go("booking", w.id)} />
+              ))
+            ) : demoList.length > 0 ? (
+              <>
+                <div className="sm:col-span-2 rounded-2xl bg-[#FEF6EC] p-4 text-xs font-bold text-[#8A4B10] ring-1 ring-[#E76F51]/30 flex items-center justify-between gap-2">
+                  <span>0 live verified workers found in database for this filter. Showing {demoList.length} discoverable demo workers (2 per category):</span>
+                  <span className="rounded-full bg-[#E76F51] px-2 py-0.5 text-[10px] text-white">SIMULATED</span>
+                </div>
+                {demoList.map((w) => (
+                  <WorkerDetailCard key={w.id} w={w} onProfile={() => { setSelectedWorker(w.id); go("worker-profile", w.id); }} onBook={() => go("booking", w.id)} />
+                ))}
+              </>
+            ) : (
               <div className="sm:col-span-2">
                 <EmptyState
-                  title={lang === "hi" ? "कोई सत्यापित कारीगर नहीं मिला" : "No verified workers found for this search"}
-                  sub={
-                    searchQuery
-                      ? `No verified workers match "${searchQuery}". Try a different keyword or view all services.`
-                      : selectedService !== "All"
-                      ? `Currently no verified workers match the selected filters under ${activeServiceObj?.en || selectedService}.`
-                      : "No verified workers match the selected filters in this area. Loosen filters to see more results."
-                  }
+                  title={lang === "hi" ? "कोई कारीगर नहीं मिला" : "No workers match these filters"}
+                  sub={searchQuery ? `No workers found matching "${searchQuery}".` : "Try resetting your price or service category filters."}
                   action={
-                    <div className="flex flex-wrap items-center justify-center gap-2">
-                      {selectedService !== "All" && (
-                        <button
-                          onClick={() => setSelectedService("All")}
-                          className="rounded-full bg-[#1B4332] px-4 py-2 text-[12.5px] font-bold text-white transition hover:bg-[#2D6A4F]"
-                        >
-                          Show all services
-                        </button>
-                      )}
-                      {searchQuery && (
-                        <button
-                          onClick={() => setSearchQuery && setSearchQuery("")}
-                          className="rounded-full bg-[#E76F51] px-4 py-2 text-[12.5px] font-bold text-white transition hover:bg-[#c65a3a]"
-                        >
-                          Clear search
-                        </button>
-                      )}
-                      <button
-                        onClick={() => {
-                          setMaxPrice(900);
-                          setMinTrust(0);
-                          setOnlyNow(false);
-                          setSelectedService("All");
-                          if (setSearchQuery) setSearchQuery("");
-                        }}
-                        className="rounded-full bg-[#FAF9F6] px-4 py-2 text-[12.5px] font-bold text-[#1B4332] ring-1 ring-[#1B4332]/20 hover:bg-[#1B4332]/5"
-                      >
-                        Reset all filters
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => {
+                        setMaxPrice(900);
+                        setMinTrust(0);
+                        setOnlyNow(false);
+                        setSelectedService("All");
+                        if (setSearchQuery) setSearchQuery("");
+                      }}
+                      className="rounded-full bg-[#1B4332] px-4 py-2 text-xs font-extrabold text-white"
+                    >
+                      Reset all filters
+                    </button>
                   }
                 />
               </div>
-            ) : list.map((w) => (
-              <WorkerDetailCard key={w.id} w={w} onProfile={() => { setSelectedWorker(w.id); go("worker-profile", w.id); }} onBook={() => go("booking", w.id)} />
-            ))}
+            )}
           </div>
           {/* explainer sidebar */}
           <aside className="hidden h-fit rounded-[20px] bg-[#1B4332] p-6 text-white lg:block">
@@ -708,12 +799,21 @@ export function WorkerListing({
           </aside>
         </div>
       )}
-      <CustomerBottomNav page="workers" go={go} onBook={() => go("booking", list[0]?.id || "ramesh")} />
+      {!loading && !error && (
+        <section className="mt-8 rounded-[22px] border border-dashed border-[#E76F51]/45 bg-[#FEF6EC] p-4 sm:p-5">
+          <h2 className="text-[16px] font-extrabold text-[#8A4B10]">Demo workers ({demoList.length}) <span className="ml-1 rounded-full bg-[#E76F51]/15 px-2 py-1 text-[10px]">SIMULATED</span></h2>
+          <p className="mt-1 text-xs font-semibold text-[#6B5A4B]">These profiles are separate from verified database workers. Demo bookings are local to this browser.</p>
+          {demoList.length === 0 ? <p className="mt-3 text-sm font-semibold text-[#6B5A4B]">No demo workers match these filters.</p> : <div className="mt-4 grid gap-4 sm:grid-cols-2">{demoList.map((w) => <WorkerDetailCard key={w.id} w={w} onProfile={() => { setSelectedWorker(w.id); go("worker-profile", w.id); }} onBook={() => go("booking", w.id)} />)}</div>}
+        </section>
+      )}
+      <CustomerBottomNav page="workers" go={go} onBook={() => go("booking", list[0]?.id || DEFAULT_DEMO_WORKER_ID)} />
     </div>
   );
 }
 
 function WorkerDetailCard({ w, onProfile, onBook }: { w: Worker; onProfile: () => void; onBook: () => void }) {
+  const isDemo = w.source === "demo" || isDemoWorkerId(w.id);
+
   return (
     <div className="overflow-hidden rounded-[20px] bg-white ring-1 ring-[#1B4332]/10 card-shadow transition hover:card-shadow-lg">
       <button onClick={onProfile} className="flex w-full gap-3.5 p-4 text-left">
@@ -722,7 +822,16 @@ function WorkerDetailCard({ w, onProfile, onBook }: { w: Worker; onProfile: () =
           {w.availableNow && <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#2D6A4F] px-2 py-0.5 text-[9px] font-extrabold text-white">● NOW</span>}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-1 text-[15px] font-extrabold">{w.name} {w.verified && <BadgeCheck className="h-4 w-4 fill-[#52B788] text-white" />}</p>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <p className="text-[15px] font-extrabold">{w.name}</p>
+            {isDemo ? (
+              <span className="rounded-full bg-[#E76F51]/15 px-2 py-0.5 text-[9px] font-black text-[#8A4B10]">
+                DEMO PROFILE
+              </span>
+            ) : (
+              w.verified && <BadgeCheck className="h-4 w-4 fill-[#52B788] text-white" />
+            )}
+          </div>
           <p className="mt-0.5 flex flex-wrap gap-1">{w.skills.slice(0, 3).map((s) => <span key={s} className="rounded-full bg-[#FAF9F6] px-2 py-0.5 text-[10.5px] font-bold text-[#4A4A4A] ring-1 ring-[#1B4332]/10">{s}</span>)}</p>
           <p className="mt-1.5 flex items-center gap-2 text-[12px] font-bold text-[#4A4A4A]"><span className="flex items-center gap-1 text-[#1A1A1A]"><Star className="h-3.5 w-3.5 fill-[#F4A261] text-[#F4A261]" />{w.rating} ({w.jobs})</span> • {w.distance} • {w.eta}</p>
         </div>
@@ -735,9 +844,13 @@ function WorkerDetailCard({ w, onProfile, onBook }: { w: Worker; onProfile: () =
           <button onClick={onBook} className="rounded-full bg-[#E76F51] px-4 py-2 text-[12.5px] font-extrabold text-white transition hover:bg-[#c65a3a]">Book →</button>
         </div>
       </div>
-      <div className="flex items-center gap-1.5 bg-[#EFFAF1] px-4 py-2 text-[11px] font-bold text-[#1B4332]">
-        <ShieldCheck className="h-3.5 w-3.5" /> Identity verified · {w.jobs} jobs · {w.rating} rating · ~{w.responseMins} min response
-        <button onClick={onProfile} className="ml-auto underline">why?</button>
+      <div className={`flex items-center gap-1.5 px-4 py-2 text-[11px] font-bold ${isDemo ? "bg-[#FEF6EC] text-[#8A4B10]" : "bg-[#EFFAF1] text-[#1B4332]"}`}>
+        <ShieldCheck className="h-3.5 w-3.5" />
+        {isDemo ? (
+          <span>Simulated demo profile • Sample rating & history • Stored in local browser</span>
+        ) : (
+          <span>Identity verified · {w.jobs} jobs · {w.rating} rating · ~{w.responseMins} min response</span>
+        )}
       </div>
     </div>
   );
@@ -752,6 +865,7 @@ export function WorkerProfile({
   const fallback = workers.find((x) => x.id === workerId) ?? workers[0];
   const [worker, setWorker] = useState<Worker>(fallback);
   const [profileLoading, setProfileLoading] = useState(false);
+  const isDemoProfile = workers.some((x) => x.id === workerId);
 
   useEffect(() => {
     let isMounted = true;
@@ -792,6 +906,14 @@ export function WorkerProfile({
     }, 1500);
   };
 
+  if (profileLoading) {
+    return (
+      <div className="page-enter mx-auto max-w-6xl px-4 pb-32 pt-5 sm:px-6 md:pb-16">
+        <SkeletonCard />
+      </div>
+    );
+  }
+
   return (
     <div className="page-enter mx-auto max-w-6xl px-4 pb-32 pt-5 sm:px-6 md:pb-16">
       <div className="flex items-center justify-between">
@@ -801,6 +923,12 @@ export function WorkerProfile({
 
       <div className="mt-4 grid gap-5 lg:grid-cols-[1fr_380px]">
         <div>
+          {isDemoProfile && (
+            <div className="mb-4 rounded-2xl bg-[#FEF6EC] px-4 py-3 text-[12.5px] font-bold text-[#8A4B10] ring-1 ring-[#E76F51]/25 flex items-center justify-between gap-2">
+              <span>DEMO PROFILE — Simulated for Saharaa hackathon demo. Bookings are saved in your current browser and will not dispatch real service.</span>
+              <span className="rounded-full bg-[#E76F51] px-2 py-0.5 text-[10px] text-white shrink-0">SIMULATED</span>
+            </div>
+          )}
           {/* hero card */}
           <div className="overflow-hidden rounded-[22px] bg-white ring-1 ring-[#1B4332]/10 card-shadow">
             <div className="relative">

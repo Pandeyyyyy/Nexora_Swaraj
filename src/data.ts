@@ -21,6 +21,7 @@ export const services: Service[] = [
 
 export type Worker = {
   id: string;
+  source?: "demo" | "live";
   name: string;
   hindiName: string;
   photo: string;
@@ -43,7 +44,7 @@ export type Worker = {
   breakdown: { label: string; value: string; done: boolean }[];
 };
 
-export const workers: Worker[] = [
+const demoWorkerSeed: Worker[] = [
   {
     id: "ramesh",
     name: "Ramesh Kumar",
@@ -297,6 +298,131 @@ export const workers: Worker[] = [
     ],
   },
 ];
+
+export const DEFAULT_DEMO_WORKER_ID = "demo-worker-plumbing-01";
+
+const demoCompanionPhotos: Record<string, string> = {
+  plumbing: "https://images.pexels.com/photos/31199562/pexels-photo-31199562.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+  cleaning: "https://images.pexels.com/photos/31251589/pexels-photo-31251589.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+  electrical: "https://images.pexels.com/photos/7647233/pexels-photo-7647233.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+  cooking: "https://images.pexels.com/photos/31031050/pexels-photo-31031050.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+  painting: "https://images.pexels.com/photos/8819155/pexels-photo-8819155.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+  appliance: "https://images.pexels.com/photos/7397453/pexels-photo-7397453.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+  carpentry: "https://images.pexels.com/photos/37589666/pexels-photo-37589666.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+  gardening: "https://images.pexels.com/photos/8819146/pexels-photo-8819146.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200",
+};
+
+const demoCompanions: Record<string, Pick<Worker, "name" | "hindiName" | "skills" | "price" | "area" | "about" | "responseMins" | "availableNow">> = {
+  plumbing: { name: "Kavita Saini", hindiName: "कविता सैनी", skills: ["Pipe fitting", "Bathroom fixtures", "Water pressure"], price: 239, area: "Nirman Vihar & 4 km", about: "Practical plumbing help for taps, fittings and low water pressure.", responseMins: 8, availableNow: false },
+  cleaning: { name: "Pooja Verma", hindiName: "पूजा वर्मा", skills: ["Move-out cleaning", "Balcony care", "Kitchen degreasing"], price: 459, area: "Mayur Vihar & 3 km", about: "Careful home cleaning with a focus on kitchens and move-out resets.", responseMins: 7, availableNow: true },
+  electrical: { name: "Nitin Gupta", hindiName: "नितिन गुप्ता", skills: ["MCB checks", "Socket repair", "LED installation"], price: 219, area: "Preet Vihar & 4 km", about: "Methodical electrical repairs for sockets, lights and home safety checks.", responseMins: 10, availableNow: true },
+  cooking: { name: "Asha Rani", hindiName: "आशा रानी", skills: ["Vegetarian meals", "Weekly meal prep", "Party snacks"], price: 389, area: "Pandav Nagar & 3 km", about: "Fresh home-style meals and practical weekly meal preparation.", responseMins: 12, availableNow: true },
+  painting: { name: "Rohit Pal", hindiName: "रोहित पाल", skills: ["Texture touch-ups", "Door polish", "Rental repainting"], price: 829, area: "Laxmi Nagar & 5 km", about: "Clean, compact painting jobs with careful masking and tidy finishes.", responseMins: 14, availableNow: false },
+  appliance: { name: "Neha Batra", hindiName: "नेहा बत्रा", skills: ["Microwave repair", "Water purifier", "AC cleaning"], price: 279, area: "Akshardham & 5 km", about: "Appliance diagnostics with clear explanations before any simulated repair work.", responseMins: 9, availableNow: true },
+  carpentry: { name: "Vikram Das", hindiName: "विक्रम दास", skills: ["Shelf installation", "Door alignment", "Study desks"], price: 329, area: "Gandhi Nagar & 5 km", about: "Thoughtful woodwork for shelves, doors and compact home repairs.", responseMins: 11, availableNow: true },
+  gardening: { name: "Sonal Mehta", hindiName: "सोनल मेहता", skills: ["Indoor plants", "Terrace herbs", "Seasonal pruning"], price: 289, area: "Patparganj & 4 km", about: "Urban garden care for balconies, herbs and healthy indoor plants.", responseMins: 13, availableNow: false },
+};
+
+function asDemoWorker(worker: Worker, index: number): Worker {
+  return {
+    ...worker,
+    id: `demo-worker-${worker.serviceId}-01`,
+    source: "demo",
+    // Demo metrics are deliberately not presented as verified identity evidence.
+    verified: false,
+    trustDNA: null,
+    breakdown: [{ label: "Hackathon demo profile", value: "Simulated data", done: false }],
+    about: `${worker.about} This is a simulated profile for the Saharaa hackathon demo.`,
+    jobs: Math.max(12, worker.jobs - index * 7),
+  };
+}
+
+const primaryDemoWorkers = demoWorkerSeed
+  .filter((worker, index, all) => all.findIndex((candidate) => candidate.serviceId === worker.serviceId) === index)
+  .map(asDemoWorker);
+
+export const workers: Worker[] = primaryDemoWorkers.flatMap((worker) => {
+  const companion = demoCompanions[worker.serviceId];
+  if (!companion) return [worker];
+  return [worker, {
+    ...worker,
+    ...companion,
+    id: `demo-worker-${worker.serviceId}-02`,
+    source: "demo",
+    verified: false,
+    trustDNA: null,
+    photo: demoCompanionPhotos[worker.serviceId] || worker.photo,
+    rating: worker.rating ? Math.max(4.3, worker.rating - 0.2) : 4.6,
+    jobs: Math.max(8, worker.jobs - 31),
+    distance: "2.1 km",
+    distanceKm: 2.1,
+    eta: `~${companion.responseMins + 8} min`,
+    languages: ["Hindi", "English"],
+    breakdown: [{ label: "Hackathon demo profile", value: "Simulated data", done: false }],
+    about: `${companion.about} This is a simulated companion profile for the Saharaa hackathon demo.`,
+  }];
+});
+
+export function isDemoWorkerId(workerId?: string | null): boolean {
+  if (!workerId || typeof workerId !== "string") return false;
+  if (workerId.startsWith("demo-") || workerId.startsWith("demo-worker-")) return true;
+  if (["ramesh", "sunita", "arif", "meena", "suresh", "javed", "geeta", "mohan", "harish"].includes(workerId)) return true;
+  return workers.some((worker) => worker.id === workerId && worker.source === "demo");
+}
+
+export interface DemoWorkerFilters {
+  serviceId?: string;
+  query?: string;
+  location?: string;
+  onlyAvailableNow?: boolean;
+  maxPrice?: number;
+  minTrust?: number;
+  sortBy?: "Recommended" | "Price: low to high" | "Highest rated" | "TrustDNA" | "Nearest" | string;
+}
+
+export function findDemoWorkers(filters?: DemoWorkerFilters): Worker[] {
+  const query = filters?.query?.trim().toLowerCase();
+  const loc = filters?.location?.split(",")[0]?.trim().toLowerCase();
+
+  let matched = workers.filter((worker) => {
+    if (filters?.serviceId && filters.serviceId !== "All" && worker.serviceId !== filters.serviceId) return false;
+    if (filters?.onlyAvailableNow && !worker.availableNow) return false;
+    if (filters?.maxPrice && worker.price > filters.maxPrice) return false;
+    if (filters?.minTrust && (worker.trustDNA || 0) < filters.minTrust) return false;
+
+    if (query) {
+      const match = [worker.name, worker.hindiName, worker.service, worker.area, worker.about, ...worker.skills]
+        .some((value) => value.toLowerCase().includes(query));
+      if (!match) return false;
+    }
+
+    if (loc && !query) {
+      // Soft location affinity if matching, otherwise keep discoverable
+      // (ensures demo workers remain discoverable even in different localities)
+    }
+
+    return true;
+  });
+
+  // Sorting
+  if (filters?.sortBy === "Price: low to high") {
+    matched = [...matched].sort((a, b) => a.price - b.price);
+  } else if (filters?.sortBy === "Highest rated") {
+    matched = [...matched].sort((a, b) => (b.rating || 0) - (a.rating || 0));
+  } else if (filters?.sortBy === "TrustDNA") {
+    matched = [...matched].sort((a, b) => (b.trustDNA || 0) - (a.trustDNA || 0));
+  } else if (filters?.sortBy === "Nearest") {
+    matched = [...matched].sort((a, b) => a.distanceKm - b.distanceKm);
+  } else {
+    // Recommended: available now first, then rating, then jobs
+    matched = [...matched].sort((a, b) => {
+      if (a.availableNow !== b.availableNow) return a.availableNow ? -1 : 1;
+      return (b.rating || 0) - (a.rating || 0);
+    });
+  }
+
+  return matched;
+}
 
 export type ServiceJobConfig = {
   title: string;

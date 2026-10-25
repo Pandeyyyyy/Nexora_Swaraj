@@ -2,9 +2,8 @@ import { useMemo, useState, useEffect, useCallback } from "react";
 import {
   BadgeCheck, Camera, CheckCircle2, ChevronLeft, ChevronRight,
   ImagePlus, MapPin, MessageCircle, Navigation, Phone, ShieldCheck, Star,
-  TrendingUp, Users, Wallet, Zap, HeartHandshake, Briefcase, LogOut, FileCheck, Loader2, AlertCircle, RefreshCw
+  TrendingUp, Users, Wallet, Zap, HeartHandshake, FileCheck, Loader2, AlertCircle, RefreshCw
 } from "lucide-react";
-import { workers } from "../data";
 import { Stars, TrustRing, WorkerBottomNav } from "../components/shared";
 import type { Page } from "../components/shared";
 import { useAuth } from "../contexts/AuthContext";
@@ -131,13 +130,29 @@ export function WorkerDashboard({ go, lang }: { go: (p: Page, w?: string) => voi
         </div>
       )}
 
+      {/* Hackathon Demo Worker Mode Entry Point */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2.5 rounded-2xl border border-dashed border-[#E76F51]/45 bg-[#FEF6EC] px-4 py-3">
+        <div className="flex items-center gap-2">
+          <span className="rounded-full bg-[#E76F51] px-2 py-0.5 text-[10px] font-extrabold text-white">HACKATHON</span>
+          <p className="text-xs font-bold text-[#8A4B10]">
+            Testing without Supabase worker credentials? Try <strong>Demo Worker Mode</strong> to counter & advance simulated bookings.
+          </p>
+        </div>
+        <button
+          onClick={() => go("demo-worker")}
+          className="rounded-full bg-[#1B4332] px-3.5 py-1.5 text-xs font-extrabold text-white transition hover:bg-[#2D6A4F]"
+        >
+          Open Demo Worker Mode →
+        </button>
+      </div>
+
       {/* header + online toggle */}
       <div className="flex flex-wrap items-center gap-3 rounded-[22px] bg-[#122b21] p-4 text-white card-shadow-lg sm:p-5">
         <img src={avatarUrl} alt={workerDisplayName} className="h-14 w-14 rounded-2xl object-cover ring-2 ring-[#52B788]" />
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-1.5 text-[16px] font-extrabold">
             {lang === "hi" ? `नमस्ते, ${workerProfile?.hindi_name || workerDisplayName} 🙏` : `Namaste, ${workerDisplayName} 🙏`}
-            {isVerified && <BadgeCheck className="h-4 w-4 fill-[#52B788] text-white" title="Verified Worker" />}
+            {isVerified && <BadgeCheck className="h-4 w-4 fill-[#52B788] text-white" aria-label="Verified Worker" />}
           </p>
           <p className="flex items-center gap-2 text-[12px] font-semibold text-white/65">
             {workerProfile?.rating != null && <Stars rating={workerProfile.rating} />}

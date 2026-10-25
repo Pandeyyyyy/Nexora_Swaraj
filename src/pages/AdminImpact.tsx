@@ -32,6 +32,10 @@ export function Admin({ go }: { go: (p: Page, w?: string) => void }) {
     ["#SH-2476", "Anita → Vikram", "Cooking • ₹350", "Completed ✓", "bg-[#1B4332] text-white"],
   ];
 
+  const filteredBookings = allBookings.filter((row) =>
+    row.some((cell) => cell.toLowerCase().includes(bookingQuery.toLowerCase()))
+  );
+
   const [toast, setToast] = useState("");
   const decide = (id: number, ok: boolean) => {
     setQueue((q) => q.filter((x) => x.id !== id));

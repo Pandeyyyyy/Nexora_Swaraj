@@ -2,7 +2,7 @@ import {
   BadgeCheck, Bell, Brush, ChefHat, ChevronRight, Hammer, Leaf, MapPin, Mic,
   Refrigerator, Search, ShieldCheck, Sparkles, Star, Wrench, Zap, Globe, Menu, X,
   Clock, Navigation, MessageCircle, Phone, Home, CalendarCheck, User, LayoutGrid,
-  Wallet, Briefcase, BarChart3, HeartHandshake, Languages, Database, CheckCircle2, AlertCircle, RefreshCw, LogOut
+  Wallet, Briefcase, BarChart3, Languages, Database, CheckCircle2, AlertCircle, RefreshCw, LogOut
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
@@ -13,15 +13,48 @@ import { useAuth } from "../contexts/AuthContext";
 /* ---------- Brand ---------- */
 export function Logo({ dark = false, compact = false }: { dark?: boolean; compact?: boolean }) {
   return (
-    <div className="flex items-center gap-2.5">
-      <div className="relative grid h-10 w-10 shrink-0 place-items-center rounded-[14px] bg-[#1B4332] text-white card-shadow">
-        <HeartHandshake className="h-5 w-5" strokeWidth={2.2} />
-        <span className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-[#E76F51] text-[10px] font-extrabold text-white ring-2 ring-[#FAF9F6]">S</span>
+    <div className="flex items-center gap-2.5 select-none">
+      <div
+        className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px] p-1 transition-transform hover:scale-105 ${
+          dark
+            ? "bg-white/12 ring-1 ring-white/20 card-shadow"
+            : "bg-white ring-1 ring-[#1B4332]/12 card-shadow"
+        }`}
+      >
+        <img
+          src="/saharaa_emblem.png"
+          alt="Saharaa emblem"
+          className="h-full w-full object-contain"
+          loading="eager"
+        />
       </div>
       {!compact && (
-        <div className="leading-none">
-          <p className={`text-[19px] font-extrabold tracking-tight ${dark ? "text-white" : "text-[#1A1A1A]"}`}>Saharaa</p>
-          <p className={`mt-1 text-[10.5px] font-semibold tracking-wide ${dark ? "text-white/60" : "text-[#4A4A4A]/80"}`}>सहारा • SAHAARA</p>
+        <div className="leading-tight text-left">
+          <div className="flex items-center gap-1.5">
+            <span
+              className={`text-[19px] font-black tracking-tight ${
+                dark ? "text-white" : "text-[#1B4332]"
+              }`}
+            >
+              Saharaa
+            </span>
+            <span
+              className={`rounded-full px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ${
+                dark
+                  ? "bg-white/15 text-[#52B788]"
+                  : "bg-[#2D6A4F]/10 text-[#2D6A4F] ring-1 ring-[#2D6A4F]/20"
+              }`}
+            >
+              सहारा
+            </span>
+          </div>
+          <p
+            className={`text-[10px] font-semibold tracking-wide ${
+              dark ? "text-white/65" : "text-[#4A4A4A]"
+            }`}
+          >
+            Local Skills • Fair Work
+          </p>
         </div>
       )}
     </div>
@@ -45,7 +78,7 @@ export function LangToggle({ lang, setLang }: { lang: "en" | "hi"; setLang: (l: 
 export type Page =
   | "landing" | "auth" | "customer-home" | "workers" | "worker-profile"
   | "booking" | "tracking" | "payment" | "worker-dashboard" | "worker-onboarding"
-  | "worker-jobs" | "worker-earnings" | "admin" | "impact";
+  | "worker-jobs" | "worker-earnings" | "demo-worker" | "admin" | "impact";
 
 export function TopNav({
   page, go, lang, setLang, role: propRole, location, setLocation,
@@ -147,6 +180,7 @@ export function TopNav({
             <>
               <NavLink label={lang === "hi" ? "सेवाएँ खोजें" : "Find Work"} onClick={() => go("customer-home")} />
               <NavLink label={lang === "hi" ? "कारीगर बनें" : "Become a Worker"} onClick={() => go("worker-onboarding")} />
+              <NavLink label="Demo Worker" onClick={() => go("demo-worker")} />
               <NavLink label={lang === "hi" ? "प्रभाव" : "Impact"} onClick={() => go("impact")} />
             </>
           )}
@@ -579,7 +613,22 @@ export function Footer({ go }: { go: (p: Page) => void }) {
         <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
           <div>
             <Logo dark />
-            <p className="mt-4 max-w-xs text-[14px] font-medium leading-relaxed text-white/65">Local Skills. Fair Work. Trusted Connections. Dignified livelihoods for India's local heroes.</p>
+            <p className="mt-3.5 max-w-xs text-[13.5px] font-medium leading-relaxed text-white/70">
+              Empowering Local Workers. Connecting Communities. Dignified blue-collar livelihoods for India's local heroes.
+            </p>
+            <div className="mt-4 flex items-center gap-3 rounded-2xl bg-white/8 p-3 ring-1 ring-white/12 backdrop-blur max-w-xs">
+              <div className="h-12 w-12 rounded-xl bg-white p-1 shrink-0 overflow-hidden shadow-sm">
+                <img
+                  src="/saharaa_logo.jpeg"
+                  alt="Saharaa Official Logo"
+                  className="h-full w-full object-contain"
+                />
+              </div>
+              <div className="text-[12px] leading-tight text-white/85">
+                <p className="font-extrabold text-white">Saharaa Marketplace</p>
+                <p className="text-[10.5px] text-[#52B788] font-bold mt-0.5">FairFare™ • TrustDNA™</p>
+              </div>
+            </div>
             <div className="mt-4 flex flex-wrap gap-2 text-[11px] font-bold">
               <span className="rounded-full bg-white/10 px-3 py-1.5">✓ Verified profiles</span>
               <span className="rounded-full bg-white/10 px-3 py-1.5">✓ Transparent pricing</span>
@@ -656,6 +705,7 @@ export function DemoBar({ go, role, setRole }: { go: (p: Page) => void; role: st
             { id: "customer-home", label: "Customer" },
             { id: "booking", label: "FairFare" },
             { id: "tracking", label: "Tracking" },
+            { id: "demo-worker", label: "Demo Worker" },
             { id: "worker-dashboard", label: "Worker" },
             { id: "admin", label: "Admin" },
             { id: "impact", label: "Impact" },
