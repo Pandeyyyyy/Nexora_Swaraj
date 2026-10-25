@@ -69,6 +69,10 @@ export default function Landing({
         <div className="relative mx-auto max-w-6xl px-4 pb-14 pt-10 sm:px-6 sm:pt-16 lg:grid lg:grid-cols-[1.05fr_0.95fr] lg:gap-12 lg:pb-20">
           <div>
             <div className="flex flex-wrap items-center gap-2">
+              <span className="flex items-center gap-2 rounded-full bg-white/12 px-3 py-1.5 text-[12px] font-extrabold text-white ring-1 ring-white/20 backdrop-blur">
+                <img src="/saharaa_emblem.png" alt="" className="h-5 w-5 object-contain" />
+                Saharaa • सहारा
+              </span>
               <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-3.5 py-2 text-[12px] font-bold text-white ring-1 ring-white/15">
                 <span className="h-2 w-2 animate-pulse rounded-full bg-[#52B788]" />
                 {lang === "hi" ? "2,150+ सत्यापित कारीगर ऑनलाइन" : "2,150+ verified workers online"}
@@ -162,9 +166,14 @@ export default function Landing({
               </div>
             </div>
             {/* floating cards */}
-            <div className="absolute -left-3 top-6 hidden animate-float-slow rounded-2xl bg-white p-3 pr-4 card-shadow-lg sm:flex" style={{ animationDelay: "1s" }}>
-              <TrustRing score={94} size={52} stroke={6} />
-              <div className="ml-2.5 self-center"><p className="text-[12px] font-extrabold">Avg. TrustDNA</p><p className="text-[11px] font-semibold text-[#4A4A4A]">ID + skill verified</p></div>
+            <div className="absolute -left-3 top-6 hidden animate-float-slow items-center gap-3 rounded-2xl bg-white p-2.5 pr-4 card-shadow-lg sm:flex" style={{ animationDelay: "1s" }}>
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#EFFAF1] p-1 ring-1 ring-[#2D6A4F]/20">
+                <img src="/saharaa_emblem.png" alt="Saharaa emblem" className="h-full w-full object-contain" />
+              </div>
+              <div className="self-center">
+                <p className="text-[12.5px] font-extrabold text-[#1B4332]">Saharaa Verified</p>
+                <p className="text-[11px] font-semibold text-[#4A4A4A]">TrustDNA™ • 94 Avg.</p>
+              </div>
             </div>
             <div className="absolute -right-2 bottom-24 hidden rounded-2xl bg-white p-3 pr-4 card-shadow-lg sm:block">
               <p className="flex items-center gap-1.5 text-[12px] font-extrabold text-[#1B4332]"><CheckCircle2 className="h-4 w-4 text-[#2D6A4F]" /> Job completed</p>
@@ -249,6 +258,53 @@ export default function Landing({
               <button onClick={() => go("worker-dashboard")} className="mt-4 flex items-center gap-1.5 rounded-full bg-[#1B4332] px-4 py-2.5 text-[13px] font-extrabold text-white transition hover:bg-[#2D6A4F]">
                 Worker view <ArrowRight className="h-4 w-4" />
               </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* BRAND MISSION & OFFICIAL LOGO SHOWCASE */}
+      <section className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+        <div className="relative overflow-hidden rounded-[26px] bg-gradient-to-br from-white via-[#FAF9F6] to-[#EFFAF1] p-6 ring-1 ring-[#1B4332]/10 card-shadow-lg sm:p-8 md:p-10">
+          <div className="grid items-center gap-8 md:grid-cols-[260px_1fr] lg:grid-cols-[290px_1fr]">
+            <div className="mx-auto flex justify-center">
+              <div className="relative overflow-hidden rounded-[22px] bg-white p-3 ring-1 ring-[#1B4332]/10 shadow-md transition hover:scale-[1.02]">
+                <img
+                  src="/saharaa_logo.jpeg"
+                  alt="Saharaa — Empowering Local Workers. Connecting Communities."
+                  className="w-full max-w-[260px] h-auto rounded-[16px] object-contain"
+                />
+              </div>
+            </div>
+            <div className="text-left">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-[#1B4332] px-3.5 py-1 text-[11px] font-extrabold text-white">
+                <span className="h-2 w-2 rounded-full bg-[#52B788] animate-pulse" />
+                OUR MISSION • हमारा उद्देश्य
+              </span>
+              <h2 className="font-display mt-3 text-[26px] font-black tracking-tight text-[#1B4332] sm:text-[32px] leading-tight">
+                {lang === "hi"
+                  ? "स्थानीय कारीगरों का सशक्तिकरण। समाज का जुड़ाव।"
+                  : "Empowering Local Workers. Connecting Communities."}
+              </h2>
+              <p className="mt-2.5 text-[14.5px] font-medium leading-relaxed text-[#4A4A4A]">
+                {lang === "hi"
+                  ? "सहारा भारत के स्थानीय कुशल कामगारों — प्लंबर, इलेक्ट्रीशियन, पेंटर, कुक, कारपेंटर और सफाई कर्मियों को सीधा पड़ोस के परिवारों से जोड़ता है। बिना किसी अनुचित कमीशन के, निष्पक्ष दाम (FairFare) और सुरक्षित पहचान (TrustDNA) के साथ।"
+                  : "Saharaa is dedicated to dignifying blue-collar livelihoods across India. By connecting verified neighborhood plumbers, electricians, carpenters, painters, cooks, and cleaners directly with local households, we eliminate predatory middleman fees while ensuring fair work, real-time safety, and community trust."}
+              </p>
+              <div className="mt-6 flex flex-wrap items-center gap-3">
+                <button
+                  onClick={() => go("customer-home")}
+                  className="flex items-center gap-2 rounded-full bg-[#1B4332] px-6 py-3 text-[13.5px] font-extrabold text-white transition hover:bg-[#2D6A4F] active:scale-95"
+                >
+                  {lang === "hi" ? "कारीगर खोजें" : "Explore Marketplace"} <ArrowRight className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => go("worker-onboarding")}
+                  className="rounded-full px-6 py-3 text-[13.5px] font-extrabold text-[#1B4332] ring-1 ring-[#1B4332]/20 hover:bg-white active:scale-95"
+                >
+                  {lang === "hi" ? "कारीगर के रूप में जुड़ें" : "Join as a Worker Partner"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
