@@ -41,6 +41,10 @@ BEGIN
     IF v_caller_id != v_booking.customer_id AND v_caller_id != v_booking.worker_id THEN
       RAISE EXCEPTION 'Unauthorized to cancel this booking';
     END IF;
+    UPDATE public.negotiation_offers
+    SET offer_status = 'expired'
+    WHERE booking_id = p_booking_id
+      AND offer_status = 'pending';
 
   ELSIF p_next_status = 'accepted' THEN
     IF v_caller_id != v_booking.worker_id THEN
@@ -62,6 +66,9 @@ BEGIN
 
     IF NOT FOUND THEN
       RAISE EXCEPTION 'No pending customer offer is available to accept';
+    END IF;
+    IF v_initial_offer.offered_price IS NULL OR v_initial_offer.offered_price <= 0 THEN
+      RAISE EXCEPTION 'Initial offer price must be greater than zero';
     END IF;
 
     UPDATE public.negotiation_offers
@@ -132,4 +139,6 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.update_booking_status TO authenticated;
+REVOKE ALL ON FUNCTION public.update_booking_status(uuid, public.booking_status, text) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.update_booking_status(uuid, public.booking_status, text) FROM anon;
+GRANT EXECUTE ON FUNCTION public.update_booking_status(uuid, public.booking_status, text) TO authenticated;

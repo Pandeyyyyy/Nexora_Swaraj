@@ -1,4 +1,14 @@
 import { supabase, isSupabaseConfigured } from './supabase';
+import {
+  acceptDemoOffer,
+  createDemoBooking,
+  getDemoBooking,
+  getDemoBookings,
+  submitDemoOffer,
+  updateDemoBookingStatus,
+  type DemoBookingStatus,
+} from './demoBookings';
+import { isDemoWorkerId } from '../data';
 
 export type BookingStatus =
   | 'pending'
@@ -82,6 +92,14 @@ export interface CreateBookingParams {
   customerNote?: string;
 }
 
+// Route/demo identifiers are allowed in presentation state, but PostgreSQL UUID
+// RPC parameters must only receive canonical UUID values.
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isValidUuid(value: unknown): value is string {
+  return typeof value === 'string' && UUID_PATTERN.test(value);
+}
+
 /**
  * Creates a new booking atomically with its initial FairFare negotiation offer.
  * Uses the PostgreSQL RPC so that the booking, its initial offer, and its audit event
@@ -90,6 +108,18 @@ export interface CreateBookingParams {
 export async function createBooking(
   params: CreateBookingParams
 ): Promise<{ data: DbBooking | null; error: string | null }> {
+  if (isDemoWorkerId(params.workerId)) {
+    try { return { data: createDemoBooking(params) as unknown as DbBooking, error: null }; }
+    catch (error) { return { data: null, error: error instanceof Error ? error.message : 'Unable to create demo booking' }; }
+  }
+
+  if (!isValidUuid(params.workerId)) {
+    return {
+      data: null,
+      error: 'This is a demo worker profile. Choose a verified worker from the live marketplace to create a booking.',
+    };
+  }
+
   if (!isSupabaseConfigured()) {
     return { data: null, error: 'Supabase is not configured' };
   }
@@ -130,13 +160,15 @@ export async function createBooking(
 }
 
 /**
- * Loads bookings for an authenticated customer.
+ * Loads bookings for an authenticated customer, combined with any simulated demo bookings.
  */
 export async function fetchCustomerBookings(
   customerId?: string
 ): Promise<{ data: DbBooking[]; error: string | null }> {
+  const localDemos = (getDemoBookings() as unknown as DbBooking[]) || [];
+
   if (!isSupabaseConfigured()) {
-    return { data: [], error: 'Supabase is not configured' };
+    return { data: localDemos, error: null };
   }
 
   try {
@@ -147,7 +179,8 @@ export async function fetchCustomerBookings(
     }
 
     if (!targetId) {
-      return { data: [], error: 'User is not authenticated' };
+      // Unauthenticated customer can still see simulated demo bookings
+      return { data: localDemos, error: null };
     }
 
     const { data, error } = await supabase
@@ -166,21 +199,40 @@ export async function fetchCustomerBookings(
       .order('created_at', { ascending: false });
 
     if (error) {
+      // Return local demo bookings if live query fails, but don't mask error if no demos exist
+      if (localDemos.length > 0) {
+        return { data: localDemos, error: null };
+      }
       return { data: [], error: error.message };
     }
 
-    return { data: (data as DbBooking[]) || [], error: null };
+    const liveBookings = (data as DbBooking[]) || [];
+    // Combine demo bookings and live bookings (demo bookings first or chronological)
+    const combined = [...localDemos, ...liveBookings].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+
+    return { data: combined, error: null };
   } catch (err: any) {
+    if (localDemos.length > 0) {
+      return { data: localDemos, error: null };
+    }
     return { data: [], error: err.message || 'Failed to load customer bookings' };
   }
 }
 
 /**
- * Loads assigned and pending bookings for an authenticated worker.
+ * Loads assigned and pending bookings for an authenticated worker, or demo worker bookings.
  */
 export async function fetchWorkerBookings(
   workerId?: string
 ): Promise<{ data: DbBooking[]; error: string | null }> {
+  // If demo worker ID, retrieve from local demo storage
+  if (workerId && isDemoWorkerId(workerId)) {
+    const demoBookings = getDemoBookings(workerId) as unknown as DbBooking[];
+    return { data: demoBookings, error: null };
+  }
+
   if (!isSupabaseConfigured()) {
     return { data: [], error: 'Supabase is not configured' };
   }
@@ -225,6 +277,7 @@ export async function fetchWorkerBookings(
 export async function fetchBookingById(
   bookingId: string
 ): Promise<{ data: DbBooking | null; error: string | null }> {
+  if (bookingId.startsWith('demo-booking-')) return { data: getDemoBooking(bookingId) as unknown as DbBooking | null, error: null };
   if (!isSupabaseConfigured()) {
     return { data: null, error: 'Supabase is not configured' };
   }
@@ -266,6 +319,7 @@ export async function fetchBookingById(
 export async function fetchBookingOffers(
   bookingId: string
 ): Promise<{ data: DbNegotiationOffer[]; error: string | null }> {
+  if (bookingId.startsWith('demo-booking-')) return { data: (getDemoBooking(bookingId)?.offers || []) as unknown as DbNegotiationOffer[], error: null };
   if (!isSupabaseConfigured()) {
     return { data: [], error: 'Supabase is not configured' };
   }
@@ -293,6 +347,7 @@ export async function fetchBookingOffers(
 export async function fetchBookingEvents(
   bookingId: string
 ): Promise<{ data: DbBookingEvent[]; error: string | null }> {
+  if (bookingId.startsWith('demo-booking-')) return { data: (getDemoBooking(bookingId)?.events || []) as unknown as DbBookingEvent[], error: null };
   if (!isSupabaseConfigured()) {
     return { data: [], error: 'Supabase is not configured' };
   }
@@ -320,8 +375,17 @@ export async function fetchBookingEvents(
 export async function submitCounterOffer(
   bookingId: string,
   price: number,
-  message?: string
+  message?: string,
+  role: 'customer' | 'worker' = 'customer'
 ): Promise<{ success: boolean; error: string | null }> {
+  if (bookingId.startsWith('demo-booking-')) {
+    try {
+      submitDemoOffer(bookingId, role, price, message);
+      return { success: true, error: null };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unable to submit demo offer' };
+    }
+  }
   if (!isSupabaseConfigured()) {
     return { success: false, error: 'Supabase is not configured' };
   }
@@ -359,8 +423,17 @@ export async function submitCounterOffer(
 export async function acceptOffer(
   bookingId: string,
   offerId: string,
-  agreedPrice: number
+  _agreedPrice?: number,
+  actor: 'customer' | 'worker' = 'customer'
 ): Promise<{ success: boolean; error: string | null }> {
+  if (bookingId.startsWith('demo-booking-')) {
+    try {
+      acceptDemoOffer(bookingId, offerId, actor);
+      return { success: true, error: null };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unable to accept demo offer' };
+    }
+  }
   if (!isSupabaseConfigured()) {
     return { success: false, error: 'Supabase is not configured' };
   }
@@ -394,6 +467,10 @@ export async function updateBookingStatus(
   nextStatus: BookingStatus,
   notes?: string
 ): Promise<{ success: boolean; error: string | null }> {
+  if (bookingId.startsWith('demo-booking-')) {
+    try { updateDemoBookingStatus(bookingId, nextStatus as DemoBookingStatus, notes); return { success: true, error: null }; }
+    catch (error) { return { success: false, error: error instanceof Error ? error.message : 'Unable to update demo booking' }; }
+  }
   if (!isSupabaseConfigured()) {
     return { success: false, error: 'Supabase is not configured' };
   }

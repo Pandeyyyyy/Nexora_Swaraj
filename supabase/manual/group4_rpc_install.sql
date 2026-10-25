@@ -30,7 +30,6 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'role' AND udt_name = 'user_role')
      OR NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'worker_profiles' AND column_name = 'verification_status' AND udt_name = 'verification_status')
      OR NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'worker_profiles' AND column_name = 'primary_service_id' AND udt_name = 'text')
-     OR NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'worker_profiles' AND column_name = 'skills' AND udt_name = '_text')
      OR NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'services' AND column_name = 'is_active' AND data_type = 'boolean')
      OR NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'negotiation_offers' AND column_name IN ('booking_id', 'proposer_id', 'proposer_role', 'offered_price', 'offer_status', 'round_number') GROUP BY table_schema, table_name HAVING count(*) = 6)
      OR NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'booking_events' AND column_name IN ('booking_id', 'actor_id', 'event_type', 'metadata') GROUP BY table_schema, table_name HAVING count(*) = 4) THEN
@@ -48,12 +47,40 @@ BEGIN
     RAISE EXCEPTION 'public.bookings types do not match the Group 4 contract; no RPCs were installed';
   END IF;
   IF (SELECT count(*) FROM (VALUES
-      ('booking_id','uuid'), ('proposer_id','uuid'), ('proposer_role','actor_role'), ('offered_price','numeric'),
-      ('offer_status','offer_status'), ('round_number','int4')
+      ('id','uuid'), ('booking_id','uuid'), ('proposer_id','uuid'), ('proposer_role','actor_role'), ('offered_price','numeric'),
+      ('message','text'), ('offer_status','offer_status'), ('round_number','int4'), ('created_at','timestamptz')
     ) AS expected(column_name, udt_name)
     JOIN information_schema.columns actual ON actual.table_schema = 'public' AND actual.table_name = 'negotiation_offers'
-      AND actual.column_name = expected.column_name AND actual.udt_name = expected.udt_name) <> 6 THEN
+      AND actual.column_name = expected.column_name AND actual.udt_name = expected.udt_name) <> 9 THEN
     RAISE EXCEPTION 'public.negotiation_offers types do not match the Group 4 contract; no RPCs were installed';
+  END IF;
+  IF (SELECT count(*) FROM (VALUES
+      ('id','uuid'), ('booking_id','uuid'), ('actor_id','uuid'), ('event_type','text'), ('notes','text'), ('metadata','jsonb'), ('created_at','timestamptz')
+    ) AS expected(column_name, udt_name)
+    JOIN information_schema.columns actual ON actual.table_schema = 'public' AND actual.table_name = 'booking_events'
+      AND actual.column_name = expected.column_name AND actual.udt_name = expected.udt_name) <> 7 THEN
+    RAISE EXCEPTION 'public.booking_events types do not match the Group 4 contract; no RPCs were installed';
+  END IF;
+  IF (SELECT count(*) FROM (VALUES ('id','uuid'), ('role','user_role')) AS expected(column_name, udt_name)
+    JOIN information_schema.columns actual ON actual.table_schema = 'public' AND actual.table_name = 'profiles'
+      AND actual.column_name = expected.column_name AND actual.udt_name = expected.udt_name) <> 2
+    OR (SELECT count(*) FROM (VALUES ('id','uuid'), ('primary_service_id','text'), ('verification_status','verification_status')) AS expected(column_name, udt_name)
+    JOIN information_schema.columns actual ON actual.table_schema = 'public' AND actual.table_name = 'worker_profiles'
+      AND actual.column_name = expected.column_name AND actual.udt_name = expected.udt_name) <> 3
+    OR (SELECT count(*) FROM (VALUES ('id','text'), ('is_active','bool')) AS expected(column_name, udt_name)
+    JOIN information_schema.columns actual ON actual.table_schema = 'public' AND actual.table_name = 'services'
+      AND actual.column_name = expected.column_name AND actual.udt_name = expected.udt_name) <> 2 THEN
+    RAISE EXCEPTION 'Profile, worker-profile, or service types do not match the Group 4 contract; no RPCs were installed';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumtypid = 'public.booking_status'::regtype AND enumlabel = 'pending')
+     OR NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumtypid = 'public.booking_status'::regtype AND enumlabel = 'negotiating')
+     OR NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumtypid = 'public.booking_status'::regtype AND enumlabel = 'accepted')
+     OR NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumtypid = 'public.booking_status'::regtype AND enumlabel IN ('on_the_way', 'in_progress', 'completed', 'cancelled') GROUP BY enumtypid HAVING count(*) = 4)
+     OR NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumtypid = 'public.offer_status'::regtype AND enumlabel IN ('pending', 'countered', 'accepted', 'expired') GROUP BY enumtypid HAVING count(*) = 4)
+     OR NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumtypid = 'public.actor_role'::regtype AND enumlabel IN ('customer', 'worker') GROUP BY enumtypid HAVING count(*) = 2)
+     OR NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumtypid = 'public.user_role'::regtype AND enumlabel IN ('customer', 'worker') GROUP BY enumtypid HAVING count(*) = 2)
+     OR NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumtypid = 'public.verification_status'::regtype AND enumlabel = 'verified') THEN
+    RAISE EXCEPTION 'Required Group 4 enum values are missing; no RPCs were installed';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint c JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
     WHERE c.contype = 'f' AND c.conrelid = 'public.bookings'::regclass AND c.confrelid = 'public.profiles'::regclass AND a.attname = 'customer_id')
@@ -61,6 +88,8 @@ BEGIN
     WHERE c.contype = 'f' AND c.conrelid = 'public.bookings'::regclass AND c.confrelid = 'public.profiles'::regclass AND a.attname = 'worker_id')
     OR NOT EXISTS (SELECT 1 FROM pg_constraint c JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
     WHERE c.contype = 'f' AND c.conrelid = 'public.negotiation_offers'::regclass AND c.confrelid = 'public.bookings'::regclass AND a.attname = 'booking_id')
+    OR NOT EXISTS (SELECT 1 FROM pg_constraint c JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
+    WHERE c.contype = 'f' AND c.conrelid = 'public.negotiation_offers'::regclass AND c.confrelid = 'public.profiles'::regclass AND a.attname = 'proposer_id')
     OR NOT EXISTS (SELECT 1 FROM pg_constraint c JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
     WHERE c.contype = 'f' AND c.conrelid = 'public.booking_events'::regclass AND c.confrelid = 'public.bookings'::regclass AND a.attname = 'booking_id') THEN
     RAISE EXCEPTION 'Required Group 4 foreign-key relationships are missing; no RPCs were installed';
@@ -204,6 +233,7 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'Offer not found for this booking'; END IF;
   IF v_offer.offer_status <> 'pending'::public.offer_status THEN RAISE EXCEPTION 'Offer is no longer pending'; END IF;
   IF v_offer.proposer_id = v_caller_id THEN RAISE EXCEPTION 'Cannot accept your own offer'; END IF;
+  IF v_offer.offered_price IS NULL OR v_offer.offered_price <= 0 THEN RAISE EXCEPTION 'Offer price must be greater than zero'; END IF;
   IF NOT (
     (v_offer.proposer_id = v_booking.customer_id AND v_offer.proposer_role = 'customer'::public.actor_role AND v_caller_id = v_booking.worker_id)
     OR
@@ -241,11 +271,14 @@ BEGIN
   IF p_next_status = 'cancelled'::public.booking_status THEN
     IF v_booking.booking_status IN ('completed'::public.booking_status, 'cancelled'::public.booking_status) THEN RAISE EXCEPTION 'Cannot cancel a % booking', v_booking.booking_status; END IF;
     IF v_caller_id <> v_booking.customer_id AND v_caller_id <> v_booking.worker_id THEN RAISE EXCEPTION 'Unauthorized to cancel this booking'; END IF;
+    UPDATE public.negotiation_offers SET offer_status = 'expired'::public.offer_status
+    WHERE booking_id = p_booking_id AND offer_status = 'pending'::public.offer_status;
   ELSIF p_next_status = 'accepted'::public.booking_status THEN
     IF v_caller_id <> v_booking.worker_id THEN RAISE EXCEPTION 'Only the assigned worker can accept a booking'; END IF;
     IF v_booking.booking_status NOT IN ('pending'::public.booking_status, 'negotiating'::public.booking_status) THEN RAISE EXCEPTION 'Invalid transition from % to accepted', v_booking.booking_status; END IF;
     SELECT * INTO v_initial_offer FROM public.negotiation_offers WHERE booking_id = p_booking_id AND proposer_id = v_booking.customer_id AND proposer_role = 'customer'::public.actor_role AND offer_status = 'pending'::public.offer_status ORDER BY round_number DESC, created_at DESC LIMIT 1 FOR UPDATE;
     IF NOT FOUND THEN RAISE EXCEPTION 'No pending customer offer is available to accept'; END IF;
+    IF v_initial_offer.offered_price IS NULL OR v_initial_offer.offered_price <= 0 THEN RAISE EXCEPTION 'Initial offer price must be greater than zero'; END IF;
     UPDATE public.negotiation_offers SET offer_status = 'accepted'::public.offer_status WHERE id = v_initial_offer.id;
     UPDATE public.negotiation_offers SET offer_status = 'countered'::public.offer_status WHERE booking_id = p_booking_id AND id <> v_initial_offer.id AND offer_status = 'pending'::public.offer_status;
     UPDATE public.bookings SET locked_price = v_initial_offer.offered_price, total_amount = v_initial_offer.offered_price + spare_parts_amount + tip_amount, updated_at = now() WHERE id = p_booking_id;
@@ -271,6 +304,10 @@ REVOKE ALL ON FUNCTION public.create_booking_atomic(uuid, text, text, text, text
 REVOKE ALL ON FUNCTION public.submit_negotiation_offer(uuid, numeric, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.accept_negotiation_offer(uuid, uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.update_booking_status(uuid, public.booking_status, text) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.create_booking_atomic(uuid, text, text, text, text, text, public.booking_type, timestamptz, numeric, text) FROM anon;
+REVOKE EXECUTE ON FUNCTION public.submit_negotiation_offer(uuid, numeric, text) FROM anon;
+REVOKE EXECUTE ON FUNCTION public.accept_negotiation_offer(uuid, uuid) FROM anon;
+REVOKE EXECUTE ON FUNCTION public.update_booking_status(uuid, public.booking_status, text) FROM anon;
 GRANT EXECUTE ON FUNCTION public.create_booking_atomic(uuid, text, text, text, text, text, public.booking_type, timestamptz, numeric, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.submit_negotiation_offer(uuid, numeric, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.accept_negotiation_offer(uuid, uuid) TO authenticated;

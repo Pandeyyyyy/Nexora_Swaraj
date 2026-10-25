@@ -45,7 +45,7 @@ export function LangToggle({ lang, setLang }: { lang: "en" | "hi"; setLang: (l: 
 export type Page =
   | "landing" | "auth" | "customer-home" | "workers" | "worker-profile"
   | "booking" | "tracking" | "payment" | "worker-dashboard" | "worker-onboarding"
-  | "worker-jobs" | "worker-earnings" | "admin" | "impact";
+  | "worker-jobs" | "worker-earnings" | "demo-worker" | "admin" | "impact";
 
 export function TopNav({
   page, go, lang, setLang, role: propRole, location, setLocation,
@@ -147,6 +147,7 @@ export function TopNav({
             <>
               <NavLink label={lang === "hi" ? "सेवाएँ खोजें" : "Find Work"} onClick={() => go("customer-home")} />
               <NavLink label={lang === "hi" ? "कारीगर बनें" : "Become a Worker"} onClick={() => go("worker-onboarding")} />
+              <NavLink label="Demo Worker" onClick={() => go("demo-worker")} />
               <NavLink label={lang === "hi" ? "प्रभाव" : "Impact"} onClick={() => go("impact")} />
             </>
           )}
@@ -656,6 +657,7 @@ export function DemoBar({ go, role, setRole }: { go: (p: Page) => void; role: st
             { id: "customer-home", label: "Customer" },
             { id: "booking", label: "FairFare" },
             { id: "tracking", label: "Tracking" },
+            { id: "demo-worker", label: "Demo Worker" },
             { id: "worker-dashboard", label: "Worker" },
             { id: "admin", label: "Admin" },
             { id: "impact", label: "Impact" },

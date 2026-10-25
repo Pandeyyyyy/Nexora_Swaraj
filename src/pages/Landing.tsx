@@ -3,7 +3,7 @@ import {
   ArrowRight, BadgeCheck, Bell, ChevronRight, Clock, HandCoins, MapPin, MessageCircle,
   Mic, Play, Search, ShieldCheck, Star, Quote, CheckCircle2, HeartHandshake, Navigation, Sparkles,
 } from "lucide-react";
-import { services, workers, impactStats, reviews } from "../data";
+import { services, workers, impactStats, reviews, DEFAULT_DEMO_WORKER_ID } from "../data";
 import { SectionHead, ServiceIcon, Stars, TrustRing, Footer } from "../components/shared";
 import type { Page } from "../components/shared";
 
@@ -226,7 +226,7 @@ export default function Landing({
               </div>
               <p className="mt-4 text-[18px] font-extrabold">TrustDNA™ Score</p>
               <p className="mt-1.5 text-[13.5px] font-medium leading-relaxed text-white/70">Every worker carries a live trust score — identity verified · jobs done · rating · response speed.</p>
-              <button onClick={() => go("worker-profile", "ramesh")} className="mt-4 flex items-center gap-1.5 rounded-full bg-white px-4 py-2.5 text-[13px] font-extrabold text-[#1B4332] transition hover:bg-[#F4A261] hover:text-white">
+              <button onClick={() => go("worker-profile", DEFAULT_DEMO_WORKER_ID)} className="mt-4 flex items-center gap-1.5 rounded-full bg-white px-4 py-2.5 text-[13px] font-extrabold text-[#1B4332] transition hover:bg-[#F4A261] hover:text-white">
                 See live example <ArrowRight className="h-4 w-4" />
               </button>
             </div>
@@ -238,7 +238,7 @@ export default function Landing({
                 <div className="animate-chat-in w-fit max-w-[85%] rounded-2xl rounded-tl-md bg-white px-3.5 py-2.5 text-[12.5px] font-bold ring-1 ring-[#1B4332]/10">Worker quote: <span className="text-[#E76F51]">₹550</span></div>
                 <div className="animate-chat-in ml-auto w-fit max-w-[85%] rounded-2xl rounded-tr-md bg-[#1B4332] px-3.5 py-2.5 text-[12.5px] font-bold text-white" style={{ animationDelay: "150ms" }}>Your offer: ₹450 ✓ locked</div>
               </div>
-              <button onClick={() => go("booking", "ramesh")} className="mt-4 flex items-center gap-1.5 rounded-full bg-[#E76F51] px-4 py-2.5 text-[13px] font-extrabold text-white transition hover:bg-[#c65a3a]">
+              <button onClick={() => go("booking", DEFAULT_DEMO_WORKER_ID)} className="mt-4 flex items-center gap-1.5 rounded-full bg-[#E76F51] px-4 py-2.5 text-[13px] font-extrabold text-white transition hover:bg-[#c65a3a]">
                 Try FairFare <ArrowRight className="h-4 w-4" />
               </button>
             </div>

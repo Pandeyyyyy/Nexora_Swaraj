@@ -1,5 +1,7 @@
 import { supabase, isSupabaseConfigured } from './supabase';
 
+const MARKETPLACE_LOAD_ERROR = 'Unable to load verified workers right now. Please try again.';
+
 export interface MarketplaceService {
   id: string;
   name_en: string;
@@ -122,7 +124,7 @@ export async function fetchMarketplaceWorkers(
 
     if (error) {
       console.error('Error fetching workers from marketplace_workers:', error.message);
-      return { data: [], error: error.message };
+      return { data: [], error: MARKETPLACE_LOAD_ERROR };
     }
 
     let workers = (data as MarketplaceWorker[]) || [];
@@ -159,7 +161,7 @@ export async function fetchMarketplaceWorkers(
     return { data: workers, error: null };
   } catch (err: any) {
     console.error('Unexpected error loading marketplace workers:', err);
-    return { data: [], error: err.message || 'Network error fetching workers' };
+    return { data: [], error: MARKETPLACE_LOAD_ERROR };
   }
 }
 
@@ -181,12 +183,14 @@ export async function fetchWorkerById(
       .maybeSingle();
 
     if (error) {
-      return { data: null, error: error.message };
+      console.error('Error fetching worker from marketplace_workers:', error.message);
+      return { data: null, error: MARKETPLACE_LOAD_ERROR };
     }
 
     return { data: (data as MarketplaceWorker) || null, error: null };
   } catch (err: any) {
-    return { data: null, error: err.message || 'Error fetching worker' };
+    console.error('Unexpected error fetching worker from marketplace_workers:', err);
+    return { data: null, error: MARKETPLACE_LOAD_ERROR };
   }
 }
 
